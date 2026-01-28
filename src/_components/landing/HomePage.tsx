@@ -1,6 +1,10 @@
 import { Navbar } from "../layout/Navbar";
+import { Footer } from "../layout/Footer";
 import { HeroSection } from "./HeroSection";
 import { FeaturesSection } from "./FeaturesSection";
+import { CompetitionsSection } from "./CompetitionsSection";
+import { TestimonialsSection } from "./TestimonialsSection";
+import { FAQSection } from "./FAQSection";
 
 export const HomePage = () => {
     return (
@@ -8,6 +12,10 @@ export const HomePage = () => {
             <Navbar />
             <HeroSection />
             <FeaturesSection />
+            <CompetitionsSection />
+            <TestimonialsSection />
+            <FAQSection />
+            <Footer />
         </main>
     );
 };

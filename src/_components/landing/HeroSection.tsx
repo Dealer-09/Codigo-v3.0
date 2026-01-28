@@ -1,26 +1,44 @@
+"use client";
+
 import Link from "next/link";
 import { CodePreview } from "./CodePreview";
+import { motion } from "framer-motion";
 
 export const HeroSection = () => {
     return (
-        <section className="relative overflow-hidden pt-8 pb-20 lg:pt-16 lg:pb-32">
+        <section className="relative overflow-hidden pt-32 pb-20 lg:pt-48 lg:pb-32">
             <div className="container mx-auto px-6">
                 <div className="grid items-center gap-12 lg:grid-cols-12">
                     {/* Left Column: Text Content */}
                     <div className="col-span-12 lg:col-span-5">
-                        <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight text-white lg:text-7xl">
+                        <motion.h1
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5 }}
+                            className="mb-6 text-5xl font-extrabold leading-tight tracking-tight text-white lg:text-7xl"
+                        >
                             Code <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Smarter</span>
                             <br />
                             Not Harder
-                        </h1>
-                        <p className="mb-8 text-lg text-gray-400 lg:text-xl">
-                            AI-powered competitive coding platform where you can practice, compete with developers, get real-time feedback, and optimize code efficiently.
-                        </p>
+                        </motion.h1>
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5, delay: 0.1 }}
+                            className="mb-8 text-lg text-gray-400 lg:text-xl"
+                        >
+                            A powerful AI-powered coding platform where you can build, collaborate, and compete with detailed efficiency.
+                        </motion.p>
 
-                        <div className="flex flex-wrap items-center gap-4">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5, delay: 0.2 }}
+                            className="flex flex-wrap items-center gap-4"
+                        >
                             <Link
                                 href="/signup"
-                                className="group relative overflow-hidden rounded-full bg-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-xl shadow-blue-500/20 transition-all hover:bg-blue-500 hover:shadow-blue-500/40"
+                                className="group relative overflow-hidden rounded-full bg-gradient-to-r from-blue-600 to-blue-500 px-8 py-3.5 text-base font-semibold text-white shadow-xl shadow-blue-500/20 transition-all hover:shadow-blue-500/40"
                             >
                                 <span className="relative z-10 flex items-center gap-2">
                                     Start Coding Now
@@ -35,10 +53,15 @@ export const HeroSection = () => {
                             >
                                 See How It works
                             </Link>
-                        </div>
+                        </motion.div>
 
                         {/* Stats */}
-                        <div className="mt-16 grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.5, delay: 0.4 }}
+                            className="mt-16 grid grid-cols-3 gap-8 border-t border-white/10 pt-8"
+                        >
                             <div>
                                 <div className="text-3xl font-bold text-white">200+</div>
                                 <div className="text-sm text-gray-400">Active Users</div>
@@ -51,7 +74,7 @@ export const HeroSection = () => {
                                 <div className="text-3xl font-bold text-white">10+</div>
                                 <div className="text-sm text-gray-400">Languages</div>
                             </div>
-                        </div>
+                        </motion.div>
                     </div>
 
                     {/* Right Column: Visuals */}
