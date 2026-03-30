@@ -1,0 +1,27 @@
+export const authAppearance = {
+  variables: {
+    colorPrimary: "#2563eb",
+    colorBackground: "#0f172a",
+    colorInputBackground: "#020617",
+    colorInputText: "#e2e8f0",
+    colorText: "#f8fafc",
+    colorTextSecondary: "#cbd5e1",
+    borderRadius: "14px",
+  },
+  elements: {
+    card: "border border-white/15 bg-slate-900 text-slate-100 shadow-2xl shadow-blue-950/45",
+    headerTitle: "!text-slate-50 !opacity-100",
+    headerSubtitle: "!text-slate-300 !opacity-100",
+    socialButtonsBlockButton: "border border-white/20 bg-slate-950 text-slate-100 hover:bg-slate-900",
+    socialButtonsBlockButtonText: "!text-slate-100",
+    formFieldLabel: "!text-slate-200",
+    formFieldInput: "border border-white/20 bg-slate-950 text-slate-100 placeholder:text-slate-500 focus:border-blue-400",
+    dividerLine: "bg-white/10",
+    dividerText: "!text-slate-400",
+    formButtonPrimary: "bg-blue-600 text-white shadow-lg shadow-blue-500/35 hover:bg-blue-500",
+    footerActionText: "!text-slate-300",
+    footerActionLink: "!text-blue-400 hover:!text-blue-300",
+    identityPreviewText: "!text-slate-200",
+    formResendCodeLink: "!text-blue-400 hover:!text-blue-300",
+  },
+};

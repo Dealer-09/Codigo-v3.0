@@ -5,7 +5,7 @@ export const userRouter = createTRPCRouter({
     // Get current user's full stats
     getStats: protectedProcedure.query(async ({ ctx }) => {
         return ctx.db.user.findUnique({
-            where: { id: ctx.session.user.id },
+            where: { clerkId: ctx.userId },
         });
     }),
 
