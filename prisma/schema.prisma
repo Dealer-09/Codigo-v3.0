@@ -1,190 +1,163 @@
 
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "sqlite"
-    url      = env("DATABASE_URL")
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-    id            String    @id
-    name          String
-    email         String?   @unique
-    image         String?
-    
-    // Game Stats
-    rank          Int       @default(0)
-    contestsCount Int       @default(0)
-    streakCount   Int       @default(0)
-    isAdmin       Boolean   @default(false)
-    
-    // Problem Solving Stats
-    problemsSolved Int       @default(0)
-    easyCount      Int       @default(0)
-    mediumCount    Int       @default(0)
-    hardCount      Int       @default(0)
-    realWorldCount Int       @default(0)
-    lastSolvedDate DateTime?
-    
-    createdAt     DateTime  @default(now())
-    updatedAt     DateTime  @updatedAt
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  clerkId       String    @unique
+  name          String?
+  email         String?   @unique
+  image         String?
+  
+  // Game Stats
+  rank          Int       @default(0)
+  contestsCount Int       @default(0)
+  streakCount   Int       @default(0)
+  problemsSolved Int      @default(0)
+  easyCount     Int       @default(0)
+  mediumCount   Int       @default(0)
+  hardCount     Int       @default(0)
+  realWorldCount Int      @default(0)
+  lastSolvedDate DateTime?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-    submissions           Submission[]
-    solvedProblems       UserProblemSolved[]
-    
-    // Arena Relations
-    arenaMatchesAsPlayer1 ArenaMatch[] @relation("Player1")
-    arenaMatchesAsPlayer2 ArenaMatch[] @relation("Player2")
-    wonMatches           ArenaMatch[] @relation("Winner")
-    
-    // Auth relations (if using NextAuth adapter, although Clerk was used in v2)
-    // We'll keep these compatible with NextAuth default schema just in case
-    accounts      Account[]
-    sessions      Session[]
-    posts         Post[]
+  posts             Post[]
+  submissions       Submission[]
+  solvedProblems    UserProblemSolved[]
+  
+  // Arena Relations
+  arenaMatchesAsPlayer1 ArenaMatch[] @relation("Player1")
+  arenaMatchesAsPlayer2 ArenaMatch[] @relation("Player2")
+  wonMatches            ArenaMatch[] @relation("Winner")
 }
 
 model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String @db.ObjectId
 
-    @@index([name])
-}
-
-// NextAuth Models (Standard)
-model Account {
-    id                String  @id @default(cuid())
-    userId            String
-    type              String
-    provider          String
-    providerAccountId String
-    refresh_token     String? 
-    access_token      String? 
-    expires_at        Int?
-    token_type        String?
-    scope             String?
-    id_token          String? 
-    session_state     String?
-    user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-    @@unique([provider, providerAccountId])
-}
-
-model Session {
-    id           String   @id @default(cuid())
-    sessionToken String   @unique
-    userId       String
-    expires      DateTime
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
-
-    @@unique([identifier, token])
+  @@index([name])
+  @@index([createdById])
 }
 
 // Application Models
 
 model Problem {
-    id          String   @id @default(cuid())
-    title       String
-    description String
-    difficulty  String   // 'easy', 'medium', 'hard', 'real-world'
-    category    String
-    tags        String   // Stored as JSON string or CSV
-    constraints String
-    
-    timeLimit   Int      @default(5000)
-    memoryLimit Int      @default(256)
-    
-    examples    String   // Stored as JSON string
-    hints       String   // Stored as JSON string
-    
-    solvedCount  Int     @default(0)
-    attemptCount Int     @default(0)
-    
-    testCases    TestCase[]
-    submissions  Submission[]
-    solvedBy     UserProblemSolved[]
-    
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String
+  difficulty  String   // 'easy', 'medium', 'hard', 'real-world'
+  category    String
+  tags        String[] 
+  constraints String
+  
+  timeLimit   Int      @default(5000)
+  memoryLimit Int      @default(256)
+  
+  examples    String   // Stored as JSON string
+  hints       String   // Stored as JSON string
+  
+  solvedCount  Int     @default(0)
+  attemptCount Int     @default(0)
+  
+  testCases    TestCase[]
+  submissions  Submission[]
+  solvedBy     UserProblemSolved[]
+  arenaMatches ArenaMatch[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model TestCase {
-    id             String  @id @default(cuid())
-    problemId      String
-    problem        Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
-    input          String
-    expectedOutput String
-    isHidden       Boolean @default(false)
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  problemId      String  @db.ObjectId
+  problem        Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  input          String
+  expectedOutput String
+  isHidden       Boolean @default(false)
+  
+  @@index([problemId])
 }
 
 model Submission {
-    id              String   @id @default(cuid())
-    userId          String
-    user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    problemId       String
-    problem         Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
-    
-    code            String
-    language        String
-    status          String   // 'accepted', 'wrong_answer', etc.
-    
-    executionTime   Float?
-    memoryUsed      Float?
-    testCasesPassed Int?
-    totalTestCases  Int?
-    
-    submittedAt     DateTime @default(now())
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String   @db.ObjectId
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemId       String   @db.ObjectId
+  problem         Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  
+  code            String
+  language        String
+  status          String   // 'accepted', 'wrong_answer', etc.
+  
+  executionTime   Float?
+  memoryUsed      Float?
+  testCasesPassed Int?
+  totalTestCases  Int?
+  
+  submittedAt     DateTime @default(now())
+  
+  @@index([userId])
+  @@index([problemId])
 }
 
 model UserProblemSolved {
-    id              String   @id @default(cuid())
-    userId          String
-    user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    problemId       String
-    problem         Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
-    
-    difficulty      String
-    category        String
-    bestSubmissionId String
-    firstSolvedAt   DateTime @default(now())
-    totalAttempts   Int      @default(1)
-
-    @@unique([userId, problemId])
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String   @db.ObjectId
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemId       String   @db.ObjectId
+  problem         Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  
+  difficulty      String
+  category        String
+  bestSubmissionId String?
+  firstSolvedAt   DateTime @default(now())
+  totalAttempts   Int      @default(1)
+  
+  @@unique([userId, problemId])
+  @@index([userId])
+  @@index([problemId])
 }
 
 model ArenaMatch {
-    id        String   @id @default(cuid())
-    status    String   @default("waiting") // waiting, in_progress, completed, abandoned
-    
-    player1Id String
-    player1   User     @relation("Player1", fields: [player1Id], references: [id])
-    player1Score Int   @default(0)
-    
-    player2Id String
-    player2   User     @relation("Player2", fields: [player2Id], references: [id])
-    player2Score Int   @default(0)
-    
-    winnerId  String?
-    winner    User?    @relation("Winner", fields: [winnerId], references: [id])
-    
-    // Store questions and their states as JSON string for simplicity in SQLite 
-    // vs complexity of many relational tables for a transient game state
-    questionsState String? // JSON string containing questions, submissions, current index, etc.
-    
-    createdAt DateTime @default(now())
-    startedAt DateTime?
-    endedAt   DateTime?
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  player1Id       String   @db.ObjectId
+  player1         User     @relation("Player1", fields: [player1Id], references: [id], onDelete: Cascade)
+  player2Id       String   @db.ObjectId
+  player2         User     @relation("Player2", fields: [player2Id], references: [id], onDelete: Cascade)
+  
+  problemId       String   @db.ObjectId
+  problem         Problem? @relation(fields: [problemId], references: [id])
+  
+  player1Code     String?
+  player2Code     String?
+  player1Status   String?  // 'accepted', 'wrong_answer', etc.
+  player2Status   String?
+  
+  winnerId        String?  @db.ObjectId
+  winner          User?    @relation("Winner", fields: [winnerId], references: [id], onDelete: SetNull)
+  
+  player1Score    Int      @default(0)
+  player2Score    Int      @default(0)
+  
+  startTime       DateTime @default(now())
+  endTime         DateTime?
+  duration        Int?     // in seconds
+  
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([winnerId])
 }

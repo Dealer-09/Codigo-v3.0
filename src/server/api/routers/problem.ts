@@ -72,7 +72,7 @@ export const problemRouter = createTRPCRouter({
             const userSolved = await ctx.db.userProblemSolved.findUnique({
                 where: {
                     userId_problemId: {
-                        userId: ctx.session.user.id,
+                        userId: ctx.userId,
                         problemId: input.id,
                     },
                 },

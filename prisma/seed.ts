@@ -122,7 +122,7 @@ async function main() {
                 description: problemData.description,
                 difficulty: problemData.difficulty,
                 category: problemData.category,
-                tags: JSON.stringify(problemData.tags),
+                tags: Array.isArray(problemData.tags) ? problemData.tags : [problemData.tags],
                 constraints: problemData.constraints,
                 examples: JSON.stringify(problemData.examples),
                 hints: JSON.stringify(problemData.hints),
