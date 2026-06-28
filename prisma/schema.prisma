@@ -37,6 +37,10 @@ model User {
   arenaMatchesAsPlayer1 ArenaMatch[] @relation("Player1")
   arenaMatchesAsPlayer2 ArenaMatch[] @relation("Player2")
   wonMatches            ArenaMatch[] @relation("Winner")
+  
+  // Custom Rooms
+  administeredRooms     ArenaRoom[]  @relation("RoomAdmin")
+  roomParticipations    RoomParticipant[]
 }
 
 model Post {
@@ -76,6 +80,9 @@ model Problem {
   submissions  Submission[]
   solvedBy     UserProblemSolved[]
   arenaMatches ArenaMatch[]
+  
+  roomIds      String[]     @db.ObjectId
+  rooms        ArenaRoom[]  @relation(fields: [roomIds], references: [id])
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -160,4 +167,40 @@ model ArenaMatch {
   @@index([player1Id])
   @@index([player2Id])
   @@index([winnerId])
+}
+
+model ArenaRoom {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  roomId          String   @unique
+  
+  adminId         String   @db.ObjectId
+  admin           User     @relation("RoomAdmin", fields: [adminId], references: [id])
+  
+  maxParticipants Int      @default(2)
+  status          String   @default("waiting") // 'waiting', 'active', 'finished'
+  isQuickMatch    Boolean  @default(false)
+  
+  problemIds      String[] @db.ObjectId
+  problems        Problem[] @relation(fields: [problemIds], references: [id])
+  
+  participants    RoomParticipant[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RoomParticipant {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  roomId          String    @db.ObjectId
+  room            ArenaRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  
+  userId          String    @db.ObjectId
+  user            User      @relation(fields: [userId], references: [id])
+  
+  score           Int       @default(0)
+  status          String    @default("joined") // 'joined', 'ready', 'finished'
+  
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
 }

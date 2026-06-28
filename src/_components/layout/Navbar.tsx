@@ -1,10 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import { UserButton } from "@clerk/nextjs";
-import { auth } from "@clerk/nextjs/server";
+import { UserButton, useAuth } from "@clerk/nextjs";
 
-export const Navbar = async () => {
-    const { userId } = await auth();
+export const Navbar = () => {
+    const { userId } = useAuth();
 
     return (
         <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-[#0a0a0a]/80 backdrop-blur-md">
@@ -22,14 +23,14 @@ export const Navbar = async () => {
                     <Link href="#" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
                         Features
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
-                        AI Assistant
+                    <Link href="/problems" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
+                        Problems
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
-                        Testimonials
+                    <Link href="/arena" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
+                        Arena
                     </Link>
-                    <Link href="#" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
-                        FAQs
+                    <Link href="/leaderboard" className="text-sm font-medium text-gray-300 transition-colors hover:text-white">
+                        Leaderboard
                     </Link>
                 </div>
 

@@ -69,14 +69,19 @@ export const problemRouter = createTRPCRouter({
             }
 
             // Check if user solved it
-            const userSolved = await ctx.db.userProblemSolved.findUnique({
-                where: {
-                    userId_problemId: {
-                        userId: ctx.userId,
-                        problemId: input.id,
+            const user = await ctx.db.user.findUnique({ where: { clerkId: ctx.userId } });
+            
+            let userSolved = null;
+            if (user) {
+                userSolved = await ctx.db.userProblemSolved.findUnique({
+                    where: {
+                        userId_problemId: {
+                            userId: user.id,
+                            problemId: input.id,
+                        },
                     },
-                },
-            });
+                });
+            }
 
             return {
                 ...problem,
@@ -88,6 +93,39 @@ export const problemRouter = createTRPCRouter({
         }),
 
     // Submit implementation to be added
+
+    create: protectedProcedure
+        .input(
+            z.object({
+                title: z.string().min(1),
+                description: z.string().min(1),
+                difficulty: z.string(),
+                category: z.string(),
+                tags: z.array(z.string()).default([]),
+                constraints: z.string().default(""),
+                examples: z.string().default("[]"),
+                hints: z.string().default("[]"),
+                testCases: z.array(
+                    z.object({
+                        input: z.string(),
+                        expectedOutput: z.string(),
+                        isHidden: z.boolean().default(false),
+                    })
+                ),
+            })
+        )
+        .mutation(async ({ ctx, input }) => {
+            const { testCases, ...problemData } = input;
+            
+            return ctx.db.problem.create({
+                data: {
+                    ...problemData,
+                    testCases: {
+                        create: testCases,
+                    },
+                },
+            });
+        }),
 });
 
 function safeJsonParse(str: string) {

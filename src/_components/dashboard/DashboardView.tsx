@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useClerk } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   BookOpen,
-  CircleDot,
   Clock3,
   Crosshair,
   Gauge,
+  LogOut,
   Medal,
   Settings,
   Sword,
@@ -17,12 +19,18 @@ import {
   PanelLeftOpen,
   Trophy,
   UserCircle2,
+  Key
 } from "lucide-react";
 
 type DashboardViewProps = {
   displayName: string;
   avatarUrl?: string;
   streakDays: number;
+  problemsSolved: number;
+  easySolved: number;
+  mediumSolved: number;
+  hardSolved: number;
+  rank: string;
 };
 
 type AchievementItem = {
@@ -138,11 +146,51 @@ const heatColorByValue = (value: number) => {
   return "bg-violet-300";
 };
 
-export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardViewProps) {
+export function DashboardView({ 
+  displayName, 
+  avatarUrl, 
+  streakDays,
+  problemsSolved,
+  easySolved,
+  mediumSolved,
+  hardSolved,
+  rank
+}: DashboardViewProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const { signOut } = useClerk();
+  const router = useRouter();
+
+  useEffect(() => {
+      const savedKey = localStorage.getItem("codigo_gemini_key");
+      if (savedKey) setApiKey(savedKey);
+  }, []);
+
+  const handleSaveKey = () => {
+      localStorage.setItem("codigo_gemini_key", apiKey);
+      setIsSettingsOpen(false);
+      window.dispatchEvent(new Event("api_key_updated"));
+  };
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed((prev) => !prev);
+  };
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    try {
+      setIsLoggingOut(true);
+      await signOut();
+      router.replace("/sign-in");
+      router.refresh();
+    } catch {
+      window.location.assign("/sign-in");
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -200,6 +248,7 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
               <button
                 type="button"
                 title="Settings"
+                onClick={() => setIsSettingsOpen(true)}
                 className={`flex w-full rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"}`}
               >
                 <Settings className="h-4 w-4 shrink-0" />
@@ -208,10 +257,14 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
               <button
                 type="button"
                 title="Logout"
-                className={`mt-2 flex w-full rounded-lg px-3 py-2 text-sm text-red-400 transition hover:bg-red-500/10 ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"}`}
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className={`mt-2 flex w-full rounded-lg px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-70 ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"}`}
               >
-                <CircleDot className="h-4 w-4 shrink-0" />
-                {!isSidebarCollapsed ? <span>Logout</span> : null}
+                <LogOut className="h-4 w-4 shrink-0" />
+                {!isSidebarCollapsed ? (
+                  <span>{isLoggingOut ? "Logging out..." : "Sign out"}</span>
+                ) : null}
               </button>
             </div>
           </div>
@@ -288,7 +341,7 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
                   <div className="relative h-40 w-40 rounded-full bg-[conic-gradient(#22c55e_0_46%,#f59e0b_46%_79%,#ef4444_79%_100%)]">
                     <div className="absolute inset-4.5 flex items-center justify-center rounded-full bg-[#0e121b]">
                       <div className="text-center">
-                        <p className="text-3xl font-bold text-white">56</p>
+                        <p className="text-3xl font-bold text-white">{problemsSolved}</p>
                         <p className="text-xs text-slate-400">Solved</p>
                       </div>
                     </div>
@@ -297,15 +350,15 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
                 <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-slate-500">Easy</p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-400">26</p>
+                    <p className="mt-1 text-lg font-semibold text-emerald-400">{easySolved}</p>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-slate-500">Medium</p>
-                    <p className="mt-1 text-lg font-semibold text-amber-400">22</p>
+                    <p className="mt-1 text-lg font-semibold text-amber-400">{mediumSolved}</p>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-slate-500">Hard</p>
-                    <p className="mt-1 text-lg font-semibold text-rose-400">8</p>
+                    <p className="mt-1 text-lg font-semibold text-rose-400">{hardSolved}</p>
                   </div>
                 </div>
               </article>
@@ -336,10 +389,10 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
                 </div>
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatPill title="Current Streak" value="12 Days" />
-                  <StatPill title="Accuracy" value="92%" />
+                  <StatPill title="Current Streak" value={`${streakDays} Days`} />
+                  <StatPill title="Accuracy" value="--%" />
                   <StatPill title="Top Percentile" value="Top 10%" />
-                  <StatPill title="Global Ranking" value="#6 / 74" />
+                  <StatPill title="Global Ranking" value={rank} />
                 </div>
               </article>
             </section>
@@ -434,6 +487,51 @@ export function DashboardView({ displayName, avatarUrl, streakDays }: DashboardV
           </div>
         </section>
       </div>
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+              <div className="bg-[#0e121b] border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+                  <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg">
+                          <Key className="w-6 h-6" />
+                      </div>
+                      <h2 className="text-xl font-bold text-white">Platform Settings</h2>
+                  </div>
+                  
+                  <div className="mb-6">
+                      <label className="block text-sm font-medium text-gray-400 mb-2">
+                          BYOK: Gemini API Key
+                      </label>
+                      <input 
+                          type="password" 
+                          placeholder="AIzaSy..."
+                          className="w-full bg-[#161b22] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                          Your key is stored securely in your browser&apos;s local storage and used for the AI Sensei assistant.
+                      </p>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                      <button 
+                          onClick={() => setIsSettingsOpen(false)}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 transition"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={handleSaveKey}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-purple-500/20 transition"
+                      >
+                          Save Settings
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </main>
   );
 }
