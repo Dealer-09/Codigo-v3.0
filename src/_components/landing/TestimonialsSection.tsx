@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Star } from "lucide-react";
 
 const testimonials = [
@@ -48,12 +47,8 @@ export const TestimonialsSection = () => {
 
                 <div className="grid gap-8 md:grid-cols-3">
                     {testimonials.map((testimonial, index) => (
-                        <motion.div
+                        <div
                             key={index}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ duration: 0.5, delay: index * 0.1 }}
                             className="group relative overflow-hidden rounded-2xl border border-white/10 bg-[#111] p-8 transition-all hover:border-white/20"
                         >
                             <div className="mb-4 flex text-yellow-500">
@@ -73,7 +68,7 @@ export const TestimonialsSection = () => {
                                     <div className="text-sm text-gray-500">{testimonial.role}</div>
                                 </div>
                             </div>
-                        </motion.div>
+                        </div>
                     ))}
                 </div>
             </div>

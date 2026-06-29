@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { api } from "~/trpc/react";
-import { Sparkles, Play, Send } from "lucide-react";
+import { Sparkles, Play, Send, Trophy, XCircle } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
+import { useTheme } from "next-themes";
 import Editor from "@monaco-editor/react";
 import confetti from "canvas-confetti";
-import { io, Socket } from "socket.io-client";
 
 type Problem = {
     id: string;
@@ -16,10 +17,22 @@ type Problem = {
     constraints: string;
 };
 
-export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?: string }) {
-    const [code, setCode] = useState("function solve() {\n  // Write your code here\n}");
+const BOILERPLATES: Record<string, string> = {
+    "javascript": "function solve() {\n  // Write your code here\n}",
+    "python": "def solve():\n    # Write your code here\n    pass",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        // Write your code here\n    }\n}",
+    "c++": "#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}",
+    "c": "#include <stdio.h>\n\nint main() {\n    // Write your code here\n    return 0;\n}"
+};
+
+export function ArenaWorkspace({ problems, roomId, matchType = "custom", timeLimit = null, startedAt, initialMatchStatus = "waiting", penaltyType = "none", hideTestCases = false, blindMode = false, bonusMarks = 5 }: { problems: Problem[], roomId?: string, matchType?: string, timeLimit?: number | null, startedAt?: string, initialMatchStatus?: string, penaltyType?: string, hideTestCases?: boolean, blindMode?: boolean, bonusMarks?: number }) {
+    const { resolvedTheme } = useTheme();
+    const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
+    const problem = problems[currentProblemIndex];
     const [language, setLanguage] = useState("javascript");
+    const [code, setCode] = useState(BOILERPLATES["javascript"] ?? "// Write your code here");
     const [aiKey, setAiKey] = useState("");
+    const [aiModel, setAiModel] = useState("");
     const [aiFeedback, setAiFeedback] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isConsoleOpen, setIsConsoleOpen] = useState(false);
@@ -28,60 +41,202 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     // Socket State
-    const [socket, setSocket] = useState<Socket | null>(null);
-    const [opponentStatus, setOpponentStatus] = useState("Waiting for opponent...");
-    const [matchStatus, setMatchStatus] = useState("waiting");
+    const [socket, setSocket] = useState<WebSocket | null>(null);
+    const [opponentStatus, setOpponentStatus] = useState(initialMatchStatus === "in-progress" ? "Opponent Coding..." : "Waiting for opponent...");
+    const [matchStatus, setMatchStatus] = useState(initialMatchStatus);
+    const [matchResult, setMatchResult] = useState<"won" | "lost" | null>(null);
+    const [points, setPoints] = useState(0);
+    
+    // Server authoritative time init
+    const getProblemTimeLimit = (diff: string) => diff === "hard" ? 20 : diff === "medium" ? 15 : 10;
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const [opponentRank, setOpponentRank] = useState<number | null>(null);
 
-    // BYOK State
-    const [aiKey, setAiKey] = useState("");
+    const { user } = useUser();
+    const userId = user?.id || "anonymous";
+
+    const recordMatchResult = api.arena.recordMatchResult.useMutation();
+
+
 
     useEffect(() => {
         // Load key on mount
         const storedKey = localStorage.getItem("codigo_gemini_key");
         if (storedKey) setAiKey(storedKey);
+        const storedModel = localStorage.getItem("codigo_gemini_model");
+        if (storedModel) setAiModel(storedModel);
 
         const handleUpdate = () => {
             const updatedKey = localStorage.getItem("codigo_gemini_key");
             if (updatedKey) setAiKey(updatedKey);
+            const updatedModel = localStorage.getItem("codigo_gemini_model");
+            if (updatedModel) setAiModel(updatedModel);
         };
         window.addEventListener("api_key_updated", handleUpdate);
 
         // Socket Connection
         if (roomId) {
-            const newSocket = io("http://localhost:3001");
+            const newSocket = new WebSocket("ws://localhost:3001");
             setSocket(newSocket);
 
-            newSocket.on("connect", () => {
-                newSocket.emit("arena:join-queue", {
-                    userId: "user_" + Math.random().toString(36).substring(7), // Mock userId for now since we don't have auth context easily available here
-                    username: "Player",
-                    difficulty: problem.difficulty
-                });
-            });
+            newSocket.onopen = () => {
+                if (matchType === "global") {
+                    newSocket.send(JSON.stringify({ type: "arena:join-queue", payload: {
+                        userId,
+                        username: "Player",
+                        difficulty: problem.difficulty
+                    }}));
+                } else {
+                    newSocket.send(JSON.stringify({ type: "arena:join-room", payload: { 
+                        roomId,
+                        userId,
+                        username: "Player"
+                    }}));
+                }
+            };
 
-            newSocket.on("arena:match-found", (match: any) => {
-                setMatchStatus("in-progress");
-                setOpponentStatus("Opponent Coding...");
-            });
-
-            newSocket.on("arena:opponent-code-update", () => {
-                setOpponentStatus("Opponent Typing...");
-                // Reset back to coding after a delay
-                setTimeout(() => setOpponentStatus("Opponent Coding..."), 2000);
-            });
-
-            newSocket.on("arena:opponent-finished", () => {
-                setOpponentStatus("Opponent Finished!");
-            });
+            newSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const match = data.payload;
+                
+                switch(data.type) {
+                    case "arena:match-found":
+                        setMatchStatus("in-progress");
+                        setOpponentStatus("Opponent Coding...");
+                        if (match.startedAt && currentProblemIndex === 0) {
+                            if (timeLimit) {
+                                const elapsed = Math.floor((Date.now() - new Date(match.startedAt).getTime()) / 1000);
+                                setTimeLeft(Math.max(0, (timeLimit * 60) - elapsed));
+                            } else {
+                                const key = `arena_${roomId}_p0_start`;
+                                localStorage.setItem(key, new Date(match.startedAt).getTime().toString());
+                                const limitMins = getProblemTimeLimit(problem.difficulty.toLowerCase());
+                                const elapsed = Math.floor((Date.now() - new Date(match.startedAt).getTime()) / 1000);
+                                setTimeLeft(Math.max(0, (limitMins * 60) - elapsed));
+                            }
+                        }
+                        break;
+                    case "arena:opponent-code-update":
+                        setOpponentStatus("Opponent Typing...");
+                        // Reset back to coding after a delay
+                        setTimeout(() => setOpponentStatus("Opponent Coding..."), 2000);
+                        break;
+                    case "arena:opponent-finished":
+                        setOpponentStatus(match.rank ? `Finished! (Rank #${match.rank})` : "Finished! 🎉");
+                        setOpponentRank(match.rank || null);
+                        break;
+                    case "arena:match-terminated":
+                        alert(`Match Terminated: ${match.reason}`);
+                        setMatchResult("lost");
+                        setShowSuccessModal(true);
+                        if (roomId) {
+                            recordMatchResult.mutate({ roomId, isWinner: false });
+                        }
+                        break;
+                    case "arena:opponent-cheated":
+                        let msg = "suspicious behavior";
+                        if (match.reason === "paste") msg = "pasting code";
+                        if (match.reason === "copy") msg = "copying code";
+                        if (match.reason === "tab_switch") msg = "leaving the browser tab";
+                        alert(`⚠️ Anti-Cheat Radar: Your opponent was caught ${msg}!`);
+                        break;
+                    case "arena:disqualified":
+                        setMatchStatus("terminated");
+                        setMatchResult("lost");
+                        alert(`You have been disqualified: ${match.reason}`);
+                        break;
+                    case "arena:opponent-disconnected":
+                        setOpponentStatus("Disconnected (Opponent Left)");
+                        setMatchResult("won");
+                        setShowSuccessModal(true);
+                        break;
+                }
+            };
 
             return () => {
-                newSocket.disconnect();
-                window.removeEventListener("api_key_updated", handleUpdate);
+                newSocket.close();
             };
         }
 
         return () => window.removeEventListener("api_key_updated", handleUpdate);
-    }, [roomId, problem.difficulty]);
+    }, [roomId, matchType, timeLimit, problem?.difficulty, userId]);
+
+
+    useEffect(() => {
+        if (!roomId || matchStatus !== "in-progress") return;
+        
+        if (timeLimit) {
+            // Global override: time doesn't reset per problem
+            if (startedAt) {
+                const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+                setTimeLeft(Math.max(0, (timeLimit * 60) - elapsed));
+            }
+        } else {
+            // Per-problem timer
+            const key = `arena_${roomId}_p${currentProblemIndex}_start`;
+            let stored = localStorage.getItem(key);
+            
+            if (!stored) {
+                const start = currentProblemIndex === 0 && startedAt ? new Date(startedAt).getTime() : Date.now();
+                localStorage.setItem(key, start.toString());
+                stored = start.toString();
+            }
+
+            const startMs = parseInt(stored);
+            const limitMins = problem ? getProblemTimeLimit(problem.difficulty.toLowerCase()) : 10;
+            const elapsed = Math.floor((Date.now() - startMs) / 1000);
+            setTimeLeft(Math.max(0, (limitMins * 60) - elapsed));
+        }
+    }, [currentProblemIndex, roomId, matchStatus, startedAt, problem?.difficulty, timeLimit]);
+
+    useEffect(() => {
+        if (timeLeft === null || matchStatus !== "in-progress" || matchResult !== null) return;
+        if (timeLeft <= 0) {
+            setMatchResult("lost");
+            setShowSuccessModal(true);
+            if (roomId) {
+                recordMatchResult.mutate({ roomId, isWinner: false });
+                if (socket) socket.send(JSON.stringify({ type: "arena:match-finished", payload: { roomId, userId } })); // DNF
+            }
+            return;
+        }
+        const timer = setInterval(() => setTimeLeft(t => t !== null ? t - 1 : null), 1000);
+        return () => clearInterval(timer);
+    }, [timeLeft, matchStatus, matchResult, roomId, userId, socket, recordMatchResult]);
+
+    // Anti-Cheat System
+    useEffect(() => {
+        if (!roomId) return; // Only enforce in Arena mode
+
+        const handlePaste = (e: ClipboardEvent) => {
+            e.preventDefault();
+            alert("🛡️ Anti-Cheat: Pasting code is strictly forbidden in Arena matches!");
+            if (socket) socket.send(JSON.stringify({ type: "arena:cheat-warning", payload: { roomId, reason: "paste" } }));
+        };
+
+        const handleCopy = (e: ClipboardEvent) => {
+            e.preventDefault();
+            alert("🛡️ Anti-Cheat: Copying code is strictly forbidden in Arena matches!");
+            if (socket) socket.send(JSON.stringify({ type: "arena:cheat-warning", payload: { roomId, reason: "copy" } }));
+        };
+
+        const handleVisibility = () => {
+            if (document.hidden) {
+                alert("🛡️ Anti-Cheat: Leaving the tab during an Arena match is recorded!");
+                if (socket) socket.send(JSON.stringify({ type: "arena:cheat-warning", payload: { roomId, reason: "tab_switch" } }));
+            }
+        };
+
+        document.addEventListener("paste", handlePaste);
+        document.addEventListener("copy", handleCopy);
+        document.addEventListener("visibilitychange", handleVisibility);
+
+        return () => {
+            document.removeEventListener("paste", handlePaste);
+            document.removeEventListener("copy", handleCopy);
+            document.removeEventListener("visibilitychange", handleVisibility);
+        };
+    }, [roomId, socket]);
 
     // Execution Mutations
     const analyzeMutation = api.ai.analyzeCode.useMutation({
@@ -108,16 +263,21 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
     });
 
     const handleAskAi = () => {
+        if (problem.difficulty.toLowerCase() !== "easy") {
+            setAiFeedback("🤖 AI Sensei Guardrails: AI assistance is strictly disabled for Medium and Hard problems in Arena Mode to prevent over-reliance.");
+            return;
+        }
         if (!aiKey) {
             setAiFeedback("Please enter your Gemini API Key in Dashboard Settings first.");
             return;
         }
         setIsAnalyzing(true);
         analyzeMutation.mutate({
-            code,
+            code: code ?? "",
             language,
             problemId: problem.id,
-            apiKey: aiKey
+            apiKey: aiKey,
+            aiModel: aiModel || undefined
         });
     };
 
@@ -141,40 +301,75 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
         onSuccess: (data) => {
             setIsConsoleOpen(true);
             if (data.success) {
-                const msg = `🎉 ALL TEST CASES PASSED! (${data.passed}/${data.total})\nSubmission Accepted!`;
+                const earnedPoints = 10 * data.total + bonusMarks; // 10 pts per test case + bonus marks
+                setPoints(p => p + earnedPoints);
+                
+                const msg = `🎉 ALL TEST CASES PASSED! (${data.passed}/${data.total})\n+${earnedPoints} Points Earned!\nSubmission Accepted!`;
                 setAiFeedback(msg);
                 setRunOutput(msg);
                 
-                // Trigger confetti and show success modal
+                // Check if match is finished or moving to next problem
                 if (data.success) {
                     confetti({
                         particleCount: 150,
                         spread: 70,
                         origin: { y: 0.6 }
                     });
-                    setShowSuccessModal(true);
                     
-                    // Notify opponent
-                    if (socket && roomId) {
-                        socket.emit("arena:match-finished", { roomId, userId: "user" });
+                    if (currentProblemIndex < problems.length - 1) {
+                        setTimeout(() => setCurrentProblemIndex(i => i + 1), 2000);
+                        setAiFeedback(msg + "\n\nMoving to next problem...");
+                        setRunOutput(msg + "\n\nMoving to next problem...");
+                    } else {
+                        setMatchResult("won");
+                        setShowSuccessModal(true);
+                        if (roomId) {
+                            recordMatchResult.mutate({ roomId, isWinner: true });
+                        }
+                        
+                        // Notify opponent
+                        if (socket && roomId) {
+                            socket.send(JSON.stringify({ type: "arena:match-finished", payload: { roomId, userId } }));
+                        }
                     }
                 }
             } else {
-                const msg = `❌ Failed at test case ${data.passed + 1}/${data.total}.\nInput: ${data.failedCase?.input}\nExpected: ${data.failedCase?.expected}\nActual: ${data.failedCase?.actual}\nError: ${data.failedCase?.error}`;
-                setAiFeedback(msg + "\n\n🤖 AI is analyzing your failure...");
+                let msg = "";
+                
+                if (hideTestCases && (problem.difficulty.toLowerCase() === "medium" || problem.difficulty.toLowerCase() === "hard")) {
+                    msg = `❌ Failed Hidden Test Case #${data.passed + 1}/${data.total}.\nEdge case failed! Check your algorithmic logic.`;
+                } else {
+                    msg = `❌ Failed at test case ${data.passed + 1}/${data.total}.\nInput: ${data.failedCase?.input}\nExpected: ${data.failedCase?.expected}\nActual: ${data.failedCase?.actual}\nError: ${data.failedCase?.error}`;
+                }
+
+                if (penaltyType === "marks") {
+                    setPoints(p => Math.max(0, p - 5));
+                    msg += "\n\n⚠️ Penalty: -5 Points for Failed Submission.";
+                } else if (penaltyType === "time") {
+                    setTimeLeft(prev => prev !== null ? Math.max(0, prev - 300) : null);
+                    msg += "\n\n⚠️ Penalty: -5 Minutes for Failed Submission.";
+                }
+                
+                const isEasyPractice = !roomId && problem.difficulty.toLowerCase() === "easy";
+                if (isEasyPractice && aiKey) {
+                    setAiFeedback(msg + "\n\n🤖 AI is analyzing your failure...");
+                } else {
+                    setAiFeedback(msg);
+                }
                 setRunOutput(msg);
 
                 // Auto-analyze failure
-                if (problem.difficulty === "easy" && aiKey) {
+                if (isEasyPractice && aiKey) {
                     analyzeTestFailure.mutate({
-                        code,
+                        code: code ?? "",
                         language,
                         problemId: problem.id,
                         failedInput: data.failedCase?.input || "",
                         expectedOutput: data.failedCase?.expected || "",
                         actualOutput: data.failedCase?.actual || "",
                         errorMessage: data.failedCase?.error,
-                        apiKey: aiKey
+                        apiKey: aiKey,
+                        aiModel: aiModel || undefined
                     });
                 }
             }
@@ -190,27 +385,54 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
     const handleRun = () => {
         setIsConsoleOpen(true);
         setRunOutput("Running code...");
-        runMutation.mutate({ code, language, stdin: customInput });
+        runMutation.mutate({ code: code ?? "", language, stdin: customInput });
     };
 
     const handleSubmitCode = () => {
+        if (!problem) return;
         setIsConsoleOpen(true);
         setRunOutput("Running against test cases...");
         setAiFeedback("Running against test cases...");
-        submitMutation.mutate({ problemId: problem.id, code, language });
+        submitMutation.mutate({ problemId: problem.id, code: code ?? "", language });
     };
+
+    if (!problem) {
+        return <div className="p-8 text-center text-gray-500 font-bold mt-20">Loading problem data...</div>;
+    }
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {roomId && (
-                <header className="h-14 border-b border-white/10 bg-[#0a0d12] flex items-center justify-between px-6 shrink-0">
+                <header className="clay-panel h-14 border-b border-[var(--color-clay-border)] flex items-center justify-between px-6 shrink-0">
                     <div className="flex items-center gap-4">
                         <span className="font-bold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">
                             BATTLE ARENA
                         </span>
-                        <span className="px-2 py-1 bg-white/5 rounded text-xs font-mono text-slate-400 border border-white/10">
-                            Room: {roomId}
-                        </span>
+                        {timeLeft !== null && (
+                            <span className={`px-2 py-1 rounded text-xs font-mono font-bold ${timeLeft < 60 ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-400 border-white/10'} border`}>
+                                ⏱️ {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                            </span>
+                        )}
+                        {matchType !== "global" && (
+                            <span className="px-2 py-1 bg-white/5 rounded text-xs font-mono text-slate-400 border border-white/10">
+                                Room: {roomId}
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex-1 flex justify-center items-center gap-2">
+                        {matchType !== "contest" && (
+                            <>
+                                <span className={`w-3 h-3 rounded-full ${matchStatus === 'in-progress' ? 'bg-red-500 animate-pulse' : 'bg-slate-500'}`}></span>
+                                <span className="font-bold text-slate-300">
+                                    {opponentStatus}
+                                </span>
+                            </>
+                        )}
+                        {matchType === "contest" && (
+                            <span className="font-bold text-amber-500 flex items-center gap-2">
+                                <Trophy className="w-5 h-5" /> Contest Mode Active
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -232,20 +454,41 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
             
             <div className="flex-1 flex overflow-hidden relative">
             {showSuccessModal && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-[#0a0d12] border border-white/10 p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-md w-full animate-in fade-in zoom-in duration-300">
-                        <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 border border-green-500/50">
-                            <Sparkles className="w-10 h-10 text-green-400" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white mb-2">Accepted!</h2>
-                        <p className="text-slate-400 text-center mb-8">
-                            You successfully solved <span className="text-white font-semibold">{problem.title}</span>. 
-                            {submitMutation.data?.isFirstSolve ? (
-                                <span className="block mt-2 text-green-400 font-bold">+{submitMutation.data.earnedPoints} Rank Points!</span>
-                            ) : (
-                                <span className="block mt-2 text-slate-500">(Already solved previously)</span>
-                            )}
-                        </p>
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+                    <div className="bg-[var(--color-clay-bg)] border border-white/10 p-12 rounded-3xl text-center max-w-md w-full shadow-2xl relative overflow-hidden">
+                        {matchResult === "won" ? (
+                            <>
+                                <div className="w-24 h-24 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Trophy className="w-12 h-12" />
+                                </div>
+                                <h2 className="text-4xl font-black text-[var(--color-clay-text)] mb-4">VICTORY!</h2>
+                                <p className="text-lg text-[var(--color-clay-text-muted)] font-medium mb-2">
+                                    You defeated your opponent!
+                                </p>
+                                <p className="text-2xl font-bold text-emerald-400 mb-8">Score: {points} pts</p>
+                            </>
+                        ) : matchResult === "lost" ? (
+                            <>
+                                <div className="w-24 h-24 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <XCircle className="w-12 h-12" />
+                                </div>
+                                <h2 className="text-4xl font-black text-[var(--color-clay-text)] mb-4">DEFEAT!</h2>
+                                <p className="text-lg text-[var(--color-clay-text-muted)] font-medium mb-2">
+                                    Your opponent finished first!
+                                </p>
+                                <p className="text-2xl font-bold text-rose-400 mb-8">Score: {points} pts</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-24 h-24 bg-purple-500/20 text-purple-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Trophy className="w-12 h-12" />
+                                </div>
+                                <h2 className="text-4xl font-black text-[var(--color-clay-text)] mb-4">MATCH COMPLETE!</h2>
+                                <p className="text-lg text-[var(--color-clay-text-muted)] font-medium mb-8">
+                                    You completed the challenge.
+                                </p>
+                            </>
+                        )}
                         <div className="flex gap-4 w-full">
                             <button 
                                 onClick={() => setShowSuccessModal(false)}
@@ -265,10 +508,10 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
             )}
             
             {/* Left Panel: Problem Statement */}
-            <div className="w-1/3 min-w-[300px] border-r border-white/10 bg-[#0a0d12] flex flex-col overflow-y-auto custom-scrollbar">
+            <div className="clay-panel w-1/3 min-w-[300px] border-r border-[var(--color-clay-border)] flex flex-col overflow-y-auto custom-scrollbar text-[var(--color-clay-text)]">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-4">
-                        <h1 className="text-2xl font-bold text-white">{problem.title}</h1>
+                        <h1 className="text-2xl font-bold text-[var(--color-clay-text)]">{problem.title}</h1>
                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                             problem.difficulty === 'easy' ? 'bg-emerald-500/20 text-emerald-400' :
                             problem.difficulty === 'medium' ? 'bg-amber-500/20 text-amber-400' :
@@ -278,14 +521,14 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                         </span>
                     </div>
                     
-                    <div className="prose prose-invert max-w-none text-slate-300">
+                    <div className="prose dark:prose-invert max-w-none text-[var(--color-clay-text)]">
                         <p className="whitespace-pre-wrap">{problem.description}</p>
                     </div>
 
                     {problem.constraints && (
                         <div className="mt-8">
-                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Constraints</h3>
-                            <div className="bg-white/5 border border-white/10 rounded-lg p-3 font-mono text-sm text-slate-300">
+                            <h3 className="text-sm font-bold text-[var(--color-clay-text-muted)] uppercase tracking-wider mb-2">Constraints</h3>
+                            <div className="bg-[var(--color-clay-bg)] border border-[var(--color-clay-border)] rounded-lg p-3 font-mono text-sm text-[var(--color-clay-text)]">
                                 {problem.constraints}
                             </div>
                         </div>
@@ -294,8 +537,8 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
             </div>
 
             {/* Middle Panel: Code Editor */}
-            <div className="flex-1 flex flex-col bg-[#06080d]">
-                <div className="h-10 bg-[#0a0d12] border-b border-white/10 flex items-center px-4 justify-between">
+            <div className="flex-1 flex flex-col bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">
+                <div className="clay-panel h-10 border-b border-[var(--color-clay-border)] flex items-center px-4 justify-between">
                     <div className="flex gap-2">
                         <div className="h-3 w-3 rounded-full bg-red-500/20 border border-red-500/50"></div>
                         <div className="h-3 w-3 rounded-full bg-amber-500/20 border border-amber-500/50"></div>
@@ -304,11 +547,19 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                     <select 
                         className="bg-transparent text-sm text-slate-400 outline-none border-none cursor-pointer"
                         value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
+                        onChange={(e) => {
+                            const newLang = e.target.value;
+                            setLanguage(newLang);
+                            if (BOILERPLATES[newLang] && (code === "" || Object.values(BOILERPLATES).includes(code ?? ""))) {
+                                setCode(BOILERPLATES[newLang]!);
+                            }
+                        }}
                     >
-                        <option value="javascript" className="bg-[#0a0d12] text-slate-300">JavaScript</option>
-                        <option value="python" className="bg-[#0a0d12] text-slate-300">Python 3</option>
-                        <option value="c++" className="bg-[#0a0d12] text-slate-300">C++</option>
+                        <option value="javascript" className="bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">JavaScript</option>
+                        <option value="python" className="bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">Python 3</option>
+                        <option value="java" className="bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">Java</option>
+                        <option value="c++" className="bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">C++</option>
+                        <option value="c" className="bg-[var(--color-clay-bg)] text-[var(--color-clay-text)]">C</option>
                     </select>
                 </div>
                 
@@ -317,12 +568,64 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                         <Editor
                             height="100%"
                             language={language === "c++" ? "cpp" : language}
-                            theme="vs-dark"
+                            theme={resolvedTheme === 'light' ? "codigo-light" : "codigo-dark"}
+                            beforeMount={(monaco) => {
+                                monaco.editor.defineTheme('codigo-dark', {
+                                    base: 'vs-dark',
+                                    inherit: true,
+                                    rules: [
+                                        { background: '0a0d12' },
+                                        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+                                        { token: 'keyword', foreground: 'ff7b72', fontStyle: 'bold' },
+                                        { token: 'identifier', foreground: 'c9d1d9' },
+                                        { token: 'string', foreground: 'a5d6ff' },
+                                        { token: 'number', foreground: '79c0ff' },
+                                        { token: 'type', foreground: 'ffa657' },
+                                        { token: 'class', foreground: 'ffa657', fontStyle: 'bold' },
+                                        { token: 'function', foreground: 'd2a8ff' },
+                                        { token: 'operator', foreground: '79c0ff' },
+                                    ],
+                                    colors: {
+                                        'editor.background': '#0a0d12',
+                                        'editor.foreground': '#c9d1d9',
+                                        'editor.lineHighlightBackground': '#161b22',
+                                        'editorLineNumber.foreground': '#484f58',
+                                        'editorIndentGuide.background': '#21262d',
+                                        'editorSuggestWidget.background': '#161b22',
+                                        'editorSuggestWidget.border': '#30363d',
+                                    }
+                                });
+                                monaco.editor.defineTheme('codigo-light', {
+                                    base: 'vs',
+                                    inherit: true,
+                                    rules: [
+                                        { background: 'ffffff' },
+                                        { token: 'comment', foreground: '6e7781', fontStyle: 'italic' },
+                                        { token: 'keyword', foreground: 'cf222e', fontStyle: 'bold' },
+                                        { token: 'identifier', foreground: '24292f' },
+                                        { token: 'string', foreground: '0a3069' },
+                                        { token: 'number', foreground: '0550ae' },
+                                        { token: 'type', foreground: '953800' },
+                                        { token: 'class', foreground: '953800', fontStyle: 'bold' },
+                                        { token: 'function', foreground: '8250df' },
+                                        { token: 'operator', foreground: '0550ae' },
+                                    ],
+                                    colors: {
+                                        'editor.background': '#ffffff',
+                                        'editor.foreground': '#24292f',
+                                        'editor.lineHighlightBackground': '#f6f8fa',
+                                        'editorLineNumber.foreground': '#8c959f',
+                                        'editorIndentGuide.background': '#d0d7de',
+                                        'editorSuggestWidget.background': '#ffffff',
+                                        'editorSuggestWidget.border': '#d0d7de',
+                                    }
+                                });
+                            }}
                             value={code}
                             onChange={(val) => {
                                 setCode(val || "");
                                 if (socket && roomId) {
-                                    socket.emit("arena:code-update", { roomId, code: val });
+                                    socket.send(JSON.stringify({ type: "arena:code-update", payload: { roomId, code: val } }));
                                 }
                             }}
                             options={{
@@ -335,49 +638,51 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                         />
                     </div>
                     {isConsoleOpen && (
-                        <div className="h-64 bg-[#0a0d12] border-t border-white/10 flex flex-col shrink-0">
-                            <div className="flex items-center justify-between p-2 border-b border-white/5">
+                        <div className="clay-panel h-64 border-t border-[var(--color-clay-border)] flex flex-col shrink-0">
+                            <div className="flex items-center justify-between p-2 border-b border-[var(--color-clay-border)]">
                                 <div className="flex gap-4 px-2">
-                                    <span className="text-sm font-bold text-slate-400">Execution Output</span>
+                                    <span className="text-sm font-bold text-[var(--color-clay-text-muted)]">Execution Output</span>
                                 </div>
-                                <button onClick={() => setIsConsoleOpen(false)} className="text-slate-500 hover:text-white px-2">✕</button>
+                                <button onClick={() => setIsConsoleOpen(false)} className="text-[var(--color-clay-text-muted)] hover:text-[var(--color-clay-text)] px-2">✕</button>
                             </div>
                             
                             <div className="flex flex-1 overflow-hidden">
-                                <div className="w-1/2 border-r border-white/5 p-4 flex flex-col">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-2">Custom Input (stdin)</label>
+                                <div className="w-1/2 border-r border-[var(--color-clay-border)] p-4 flex flex-col">
+                                    <label className="text-xs font-bold text-[var(--color-clay-text-muted)] uppercase mb-2">Custom Input (stdin)</label>
                                     <textarea 
-                                        className="flex-1 bg-white/5 border border-white/10 rounded p-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-indigo-500 resize-none custom-scrollbar"
+                                        className="flex-1 bg-[var(--color-clay-bg)] border border-[var(--color-clay-border)] rounded p-2 text-sm text-[var(--color-clay-text)] font-mono focus:outline-none focus:border-indigo-500 resize-none custom-scrollbar"
                                         placeholder="Enter standard input here..."
                                         value={customInput}
                                         onChange={(e) => setCustomInput(e.target.value)}
                                     />
                                 </div>
                                 <div className="w-1/2 p-4 flex flex-col overflow-y-auto custom-scrollbar">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-2">Output (stdout)</label>
-                                    <pre className="font-mono text-sm text-slate-300 whitespace-pre-wrap">{runOutput}</pre>
+                                    <label className="text-xs font-bold text-[var(--color-clay-text-muted)] uppercase mb-2">Output (stdout)</label>
+                                    <pre className="font-mono text-sm text-[var(--color-clay-text)] whitespace-pre-wrap">{runOutput}</pre>
                                 </div>
                             </div>
                         </div>
                     )}
                 </div>
 
-                <div className="h-14 border-t border-white/10 bg-[#0a0d12] flex items-center justify-between px-4 shrink-0">
+                <div className="clay-panel h-14 border-t border-[var(--color-clay-border)] flex items-center justify-between px-4 shrink-0">
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => setIsConsoleOpen(!isConsoleOpen)}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition ${isConsoleOpen ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition ${isConsoleOpen ? 'bg-indigo-500 text-white' : 'bg-transparent text-[var(--color-clay-text-muted)] hover:bg-[var(--color-clay-border)]'}`}>
                             Console
                         </button>
                     </div>
                     <div className="flex items-center gap-3">
-                        <button 
-                            onClick={handleRun}
-                            disabled={runMutation.isPending}
-                            className="flex items-center gap-2 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-50"
-                        >
-                            <Play className="w-4 h-4" /> {runMutation.isPending ? "Running..." : "Run"}
-                        </button>
+                        {!blindMode && (
+                            <button 
+                                onClick={handleRun}
+                                disabled={runMutation.isPending}
+                                className="flex items-center gap-2 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-50"
+                            >
+                                <Play className="w-4 h-4" /> {runMutation.isPending ? "Running..." : "Run"}
+                            </button>
+                        )}
                         <button 
                             onClick={handleSubmitCode}
                             disabled={submitMutation.isPending}
@@ -389,8 +694,9 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                 </div>
             </div>
 
-            {/* Right Panel: AI BYOK Assistant */}
-            <div className="w-1/4 min-w-[280px] border-l border-white/10 bg-[#0a0d12] flex flex-col">
+            {/* Right Panel: AI BYOK Assistant - ONLY FOR EASY PRACTICE PROBLEMS */}
+            {(!roomId && problem.difficulty.toLowerCase() === 'easy') && (
+                <div className="clay-panel w-1/4 min-w-[280px] border-l border-[var(--color-clay-border)] flex flex-col">
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-purple-400 font-bold">
                         <Sparkles className="w-4 h-4" /> AI Sensei
@@ -401,7 +707,7 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                 </div>
                 
                 <div className="p-4 flex-1 overflow-y-auto flex flex-col gap-4">
-                    <div className="bg-[#111826] border border-white/5 rounded-xl p-4 text-sm text-slate-400">
+                    <div className="bg-[var(--color-clay-bg)] border border-[var(--color-clay-border)] rounded-xl p-4 text-sm text-[var(--color-clay-text-muted)]">
                         {aiKey ? (
                             <div className="text-emerald-400 font-medium">✓ API Key loaded from settings.</div>
                         ) : (
@@ -424,6 +730,7 @@ export function ArenaWorkspace({ problem, roomId }: { problem: Problem, roomId?:
                     )}
                 </div>
             </div>
+            )}
             </div>
         </div>
     );

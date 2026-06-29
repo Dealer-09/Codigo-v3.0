@@ -2,6 +2,19 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+function getGenerativeModel(apiKey: string, modelName?: string) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    return genAI.getGenerativeModel({ model: modelName || "gemini-3.5-flash" });
+}
+
+function handleAIError(error: any) {
+    console.error("AI Error:", error);
+    const isOverloaded = error.message?.includes("503") || error.message?.includes("high demand");
+    return isOverloaded 
+        ? "Google AI is currently overloaded with high demand (503). Please try again in a moment." 
+        : "Failed to communicate with AI. Check server configurations.";
+}
+
 export const aiRouter = createTRPCRouter({
     analyzeCode: protectedProcedure
         .input(z.object({
@@ -9,6 +22,7 @@ export const aiRouter = createTRPCRouter({
             language: z.string(),
             problemId: z.string(),
             apiKey: z.string().min(1, "API Key is required for BYOK"),
+            aiModel: z.string().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
             const problem = await ctx.db.problem.findUnique({ where: { id: input.problemId } });
@@ -20,18 +34,27 @@ export const aiRouter = createTRPCRouter({
             }
 
             try {
-                const genAI = new GoogleGenerativeAI(input.apiKey);
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = getGenerativeModel(input.apiKey, input.aiModel);
 
                 const prompt = `
-            Analyze this ${input.language} code for the following problem:
-            "${problem.description}"
+            You are an expert Competitive Programming AI Assistant.
             
-            Code:
+            Problem Title: ${problem.title}
+            Description: ${problem.description}
+            Constraints: ${problem.constraints || "N/A"}
+            Examples/Test Cases: ${JSON.stringify(problem.examples)}
+            
+            User's ${input.language} Code:
             ${input.code}
             
-            Provide specific feedback, pointing out errors or inefficiencies. Keep it very concise.
-            Return a JSON object with: { "status": "success", "feedback": ["point 1", "point 2"], "correctedCode": "optional string" }
+            INSTRUCTIONS:
+            1. Validate the core algorithm against the problem description and test cases.
+            2. Ignore standard competitive programming I/O boilerplate (e.g., sys.stdin.read, scanner classes, fs.readFileSync). Do NOT penalize or critique I/O methods unless they fundamentally break the solution.
+            3. Point out logical errors, edge cases missed, or time/space complexity issues.
+            4. Keep feedback very concise and actionable.
+            
+            Return a JSON object EXACTLY in this format: 
+            { "status": "success", "feedback": ["point 1", "point 2"], "correctedCode": "optional string" }
             `;
 
                 const result = await model.generateContent(prompt);
@@ -46,9 +69,8 @@ export const aiRouter = createTRPCRouter({
                 } catch (e) {
                     return { status: "success", feedback: [text] };
                 }
-            } catch (error) {
-                console.error("AI Error:", error);
-                return { status: "error", message: "Failed to analyze code. Check your API Key." };
+            } catch (error: any) {
+                return { status: "error", message: handleAIError(error) };
             }
         }),
 
@@ -62,6 +84,7 @@ export const aiRouter = createTRPCRouter({
             actualOutput: z.string(),
             errorMessage: z.string().optional(),
             apiKey: z.string().min(1, "API Key is required for BYOK"),
+            aiModel: z.string().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
             const problem = await ctx.db.problem.findUnique({ where: { id: input.problemId } });
@@ -72,12 +95,13 @@ export const aiRouter = createTRPCRouter({
             }
 
             try {
-                const genAI = new GoogleGenerativeAI(input.apiKey);
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = getGenerativeModel(input.apiKey, input.aiModel);
 
                 const prompt = `
-            The user submitted ${input.language} code for the problem: "${problem.title}".
-            Their code failed a test case.
+            You are an expert Competitive Programming AI Assistant.
+            
+            Problem Title: "${problem.title}"
+            The user submitted ${input.language} code that failed a test case.
             
             Code:
             ${input.code}
@@ -87,13 +111,16 @@ export const aiRouter = createTRPCRouter({
             Actual Output: ${input.actualOutput}
             Error Message: ${input.errorMessage || "None"}
             
-            Explain concisely why the code failed this specific test case and give a hint to fix it. Do not just give the complete answer.
+            INSTRUCTIONS:
+            1. Explain concisely why the code failed this specific test case and give a hint to fix it. Do not just give the complete answer.
+            2. Ignore standard competitive programming I/O boilerplate (e.g., sys.stdin.read, scanner classes, fs.readFileSync). Do NOT penalize or critique I/O methods.
+            3. Focus entirely on the logical flaw that caused the wrong output or runtime error.
             `;
 
                 const result = await model.generateContent(prompt);
                 return { feedback: result.response.text() };
-            } catch (e) {
-                return { feedback: "Failed to analyze test failure. Check your API Key." };
+            } catch (error: any) {
+                return { feedback: handleAIError(error) };
             }
         }),
 
@@ -102,6 +129,7 @@ export const aiRouter = createTRPCRouter({
             problemId: z.string(),
             currentCode: z.string().optional(),
             apiKey: z.string().min(1, "API Key is required for BYOK"),
+            aiModel: z.string().optional(),
         }))
         .mutation(async ({ ctx, input }) => {
             const problem = await ctx.db.problem.findUnique({ where: { id: input.problemId } });
@@ -111,8 +139,7 @@ export const aiRouter = createTRPCRouter({
                 return { hint: "AI Hints are only available for Easy problems." };
             }
 
-            const genAI = new GoogleGenerativeAI(input.apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = getGenerativeModel(input.apiKey, input.aiModel);
 
             const prompt = `
         Provide a helpful hint for solving: "${problem.title}".
@@ -125,8 +152,8 @@ export const aiRouter = createTRPCRouter({
             try {
                 const result = await model.generateContent(prompt);
                 return { hint: result.response.text() };
-            } catch (e) {
-                return { hint: "Failed to get hint." };
+            } catch (error: any) {
+                return { hint: handleAIError(error) };
             }
         }),
 });

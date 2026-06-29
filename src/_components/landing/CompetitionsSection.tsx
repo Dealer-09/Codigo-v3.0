@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Brain, Trophy, Activity, Zap } from "lucide-react";
 
 const details = [
@@ -82,9 +81,8 @@ export const CompetitionsSection = () => {
 };
 
 const FeatureCard = ({ data }: { data: typeof details[0] }) => (
-    <motion.div
-        whileHover={{ y: -5 }}
-        className="rounded-2xl border border-white/10 bg-[#111] p-6 transition-colors hover:bg-[#161616]"
+    <div
+        className="rounded-2xl border border-white/10 bg-[#111] p-6 transition-all hover:bg-[#161616] hover:-translate-y-1"
     >
         <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg ${data.color} shadow-lg shadow-white/5`}>
             {data.icon}
@@ -93,5 +91,5 @@ const FeatureCard = ({ data }: { data: typeof details[0] }) => (
         <p className="text-sm text-gray-400 leading-relaxed">
             {data.description}
         </p>
-    </motion.div>
+    </div>
 );

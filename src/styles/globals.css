@@ -3,15 +3,126 @@
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  --radius-clay: 32px;
+  --radius-clay-sm: 16px;
 }
 
 @layer base {
+  :root, .light {
+    /* Light Mode Glassy Claymorphism */
+    --color-clay-bg: #e0e5ec;
+    --color-clay-surface: rgba(255, 255, 255, 0.35);
+    --color-clay-text: #2d3748;
+    --color-clay-text-muted: #718096;
+    
+    --shadow-clay-card: 16px 16px 32px rgba(163, 177, 198, 0.6), -16px -16px 32px rgba(255, 255, 255, 0.8), inset 2px 2px 5px rgba(255, 255, 255, 0.7), inset -3px -3px 5px rgba(0, 0, 0, 0.05);
+    --shadow-clay-card-hover: 20px 20px 40px rgba(163, 177, 198, 0.7), -20px -20px 40px rgba(255, 255, 255, 0.9), inset 2px 2px 5px rgba(255, 255, 255, 0.7), inset -3px -3px 5px rgba(0, 0, 0, 0.05);
+    
+    --shadow-clay-btn: 6px 6px 12px rgba(163, 177, 198, 0.6), -6px -6px 12px rgba(255, 255, 255, 0.8), inset 1px 1px 2px rgba(255, 255, 255, 0.7), inset -1px -1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-clay-btn-active: inset 6px 6px 12px rgba(163, 177, 198, 0.6), inset -6px -6px 12px rgba(255, 255, 255, 0.8);
+    
+    --shadow-clay-inset: inset 8px 8px 16px rgba(163, 177, 198, 0.6), inset -8px -8px 16px rgba(255, 255, 255, 0.8);
+    --shadow-clay-inset-sm: inset 4px 4px 8px rgba(163, 177, 198, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.8);
+  }
+
+  .dark {
+    /* Pitch Black Glassy Claymorphism */
+    --color-clay-bg: #000000;
+    --color-clay-surface: rgba(15, 15, 20, 0.45);
+    --color-clay-text: #f8fafc;
+    --color-clay-text-muted: #94a3b8;
+    
+    --shadow-clay-card: 0px 10px 40px rgba(0, 0, 0, 1), inset 1px 1px 4px rgba(255, 255, 255, 0.1), inset -3px -3px 8px rgba(0, 0, 0, 0.8);
+    --shadow-clay-card-hover: 0px 15px 50px rgba(0, 0, 0, 1), inset 1px 1px 5px rgba(255, 255, 255, 0.15), inset -3px -3px 8px rgba(0, 0, 0, 0.8);
+    
+    --shadow-clay-btn: 0px 5px 20px rgba(0, 0, 0, 1), inset 1px 1px 3px rgba(255, 255, 255, 0.1), inset -2px -2px 5px rgba(0, 0, 0, 0.8);
+    --shadow-clay-btn-active: inset 3px 3px 8px rgba(0, 0, 0, 0.9), inset -1px -1px 3px rgba(255, 255, 255, 0.05);
+    
+    --shadow-clay-inset: inset 6px 6px 15px rgba(0, 0, 0, 0.9), inset -2px -2px 6px rgba(255, 255, 255, 0.03);
+    --shadow-clay-inset-sm: inset 3px 3px 8px rgba(0, 0, 0, 0.9), inset -1px -1px 4px rgba(255, 255, 255, 0.03);
+  }
+
   html {
     scroll-behavior: smooth;
   }
   
   body {
-    background-color: #0a0a0a;
-    color: white;
+    background-color: var(--color-clay-bg);
+    color: var(--color-clay-text);
+    transition: all 0.3s ease;
+  }
+}
+
+@layer utilities {
+  .clay-card {
+    background-color: var(--color-clay-surface);
+    box-shadow: var(--shadow-clay-card);
+    border-radius: var(--radius-clay);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  .clay-card:hover {
+    box-shadow: var(--shadow-clay-card-hover);
+    transform: translateY(-3px) scale(1.01);
+  }
+
+  .clay-btn {
+    background-color: var(--color-clay-surface);
+    box-shadow: var(--shadow-clay-btn);
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .clay-btn:hover {
+    box-shadow: var(--shadow-clay-card);
+    transform: translateY(-2px);
+  }
+
+  .clay-btn:active {
+    box-shadow: var(--shadow-clay-btn-active);
+    transform: translateY(1px);
+    border: 1px solid transparent;
+  }
+
+  .clay-panel {
+    background-color: var(--color-clay-surface);
+    box-shadow: var(--shadow-clay-inset);
+    border-radius: var(--radius-clay);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .clay-pill {
+    background-color: var(--color-clay-surface);
+    box-shadow: var(--shadow-clay-inset-sm);
+    border-radius: var(--radius-clay-sm);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
   }
 }

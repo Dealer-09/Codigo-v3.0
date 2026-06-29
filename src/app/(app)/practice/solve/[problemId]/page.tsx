@@ -32,9 +32,9 @@ export default async function PracticeSolvePage({
     }
 
     return (
-        <main className="h-screen bg-[#06080d] text-slate-100 flex flex-col overflow-hidden">
+        <main className="h-screen flex flex-col overflow-hidden text-[var(--color-clay-text)]">
             {/* Minimalist Topbar for Practice */}
-            <header className="h-14 border-b border-white/10 bg-[#0a0d12] flex items-center justify-between px-6 shrink-0">
+            <header className="clay-panel h-14 border-b border-[var(--color-clay-border)] flex items-center justify-between px-6 shrink-0">
                 <div className="flex items-center gap-4">
                     <Link href={`/practice/${problem.difficulty === 'easy' ? 'beginner' : problem.difficulty === 'medium' ? 'intermediate' : 'advanced'}`} className="text-slate-400 hover:text-white transition-colors">
                         <ArrowLeft className="w-5 h-5" />
@@ -52,14 +52,14 @@ export default async function PracticeSolvePage({
 
             {/* Workspace Area */}
             <ArenaWorkspace 
-                problem={{
+                problems={[{
                     id: problem.id,
                     title: problem.title,
                     description: problem.description,
-                    difficulty: problem.difficulty,
-                    examples: JSON.stringify(problem.examples),
+                    difficulty: problem.difficulty as "easy" | "medium" | "hard",
+                    examples: typeof problem.examples === 'string' ? problem.examples : JSON.stringify(problem.examples),
                     constraints: problem.constraints
-                }} 
+                }]} 
             />
         </main>
     );

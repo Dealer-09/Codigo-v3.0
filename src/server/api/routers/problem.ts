@@ -20,7 +20,7 @@ export const problemRouter = createTRPCRouter({
 
             // Basic tag filtering (partial match) - rigorous filtering requires specific schema design
             if (input.tags && input.tags.length > 0 && input.tags[0]) {
-                where.tags = { contains: input.tags[0] };
+                where.tags = { has: input.tags[0] };
             }
 
             const problems = await ctx.db.problem.findMany({
@@ -69,19 +69,12 @@ export const problemRouter = createTRPCRouter({
             }
 
             // Check if user solved it
-            const user = await ctx.db.user.findUnique({ where: { clerkId: ctx.userId } });
-            
-            let userSolved = null;
-            if (user) {
-                userSolved = await ctx.db.userProblemSolved.findUnique({
-                    where: {
-                        userId_problemId: {
-                            userId: user.id,
-                            problemId: input.id,
-                        },
-                    },
-                });
-            }
+            const userSolved = await ctx.db.userProblemSolved.findFirst({
+                where: {
+                    problemId: input.id,
+                    user: { clerkId: ctx.userId }
+                }
+            });
 
             return {
                 ...problem,

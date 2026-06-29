@@ -19,9 +19,9 @@ const tracks = {
     description: "Complex algorithm and optimization packs.",
     difficulty: "hard",
   },
-  "real-world": {
-    title: "Real-world Projects",
-    description: "Applied project simulations and portfolio tasks.",
+  "backend": {
+    title: "Applied Backend Tasks",
+    description: "Practical, portfolio-grade real-world API building.",
     difficulty: "real-world",
   },
 } as const;
@@ -43,17 +43,17 @@ export default async function PracticeTrackPage({
   const problems = data.problems;
 
   return (
-    <main className="min-h-screen bg-[#06080d] px-4 py-10 text-slate-100 md:px-8">
+    <main className="min-h-screen px-4 py-10 md:px-8">
       <div className="mx-auto max-w-4xl">
         {/* Header */}
-        <div className="mb-10 rounded-3xl border border-white/10 bg-[#0d1320] p-8 text-center shadow-lg">
-          <h1 className="text-3xl font-bold text-white">{info.title}</h1>
-          <p className="mt-3 text-slate-300">{info.description}</p>
+        <div className="clay-card mb-10 rounded-3xl p-8 text-center shadow-[var(--shadow-clay-card)]">
+          <h1 className="text-3xl font-bold text-[var(--color-clay-text)]">{info.title}</h1>
+          <p className="mt-3 text-[var(--color-clay-text-muted)]">{info.description}</p>
           
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/practice"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"
+              className="clay-btn inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[var(--color-clay-text)]"
             >
               <ArrowLeft className="h-4 w-4" />
               Back To Tracks
@@ -63,23 +63,23 @@ export default async function PracticeTrackPage({
 
         {/* Problem List */}
         <div className="space-y-4">
-          <h2 className="mb-4 text-xl font-bold text-white">Available Problems ({problems.length})</h2>
+          <h2 className="mb-4 text-xl font-bold text-[var(--color-clay-text)]">Available Problems ({problems.length})</h2>
           
           {problems.length === 0 ? (
-            <div className="rounded-2xl border border-white/5 bg-[#0a0d12] p-10 text-center">
-              <p className="text-slate-400">No problems available in this track yet.</p>
+            <div className="clay-card rounded-2xl p-10 text-center">
+              <p className="text-[var(--color-clay-text-muted)]">No problems available in this track yet.</p>
             </div>
           ) : (
             problems.map((prob) => (
               <div 
                 key={prob.id}
-                className="group flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-[#0d1320] p-5 transition-all hover:border-violet-500/30 hover:bg-[#111826] sm:flex-row sm:items-center"
+                className="clay-card group flex flex-col justify-between gap-4 rounded-2xl p-5 transition-all hover:scale-[1.01] sm:flex-row sm:items-center"
               >
                 <div>
-                  <h3 className="text-lg font-bold text-white group-hover:text-violet-300">
+                  <h3 className="text-lg font-bold text-[var(--color-clay-text)] group-hover:text-violet-500">
                     {prob.title}
                   </h3>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-slate-400">
+                  <div className="mt-2 flex items-center gap-3 text-xs text-[var(--color-clay-text-muted)]">
                     <span className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
                       {prob.category}
@@ -93,7 +93,7 @@ export default async function PracticeTrackPage({
                 
                 <Link
                   href={`/practice/solve/${prob.id}`}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-600"
+                  className="clay-btn inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-[var(--color-clay-text)] hover:text-violet-600"
                 >
                   <Play className="h-4 w-4" />
                   Solve

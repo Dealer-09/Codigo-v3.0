@@ -1,69 +1,13 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
 
-const execAsync = promisify(exec);
-const JUDGE0_URL = "http://localhost:2358";
-const LANGUAGE_IDS: Record<string, number> = { "javascript": 63, "python": 71, "c++": 54 };
+const JUDGE0_URL = "http://127.0.0.1:2358";
+const LANGUAGE_IDS: Record<string, number> = { "c": 50, "c++": 54, "java": 62, "javascript": 63, "python": 71 };
 
-// Development-only local execution (since Judge0's 'isolate' sandbox fails on Windows WSL2 Docker due to cgroup v2 conflicts)
-async function executeLocally(code: string, language: string, stdin: string): Promise<{ success: boolean; output: string; error: string }> {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "codigo-"));
-    let success = false;
-    let output = "";
-    let errorStr = "";
-
-    try {
-        const inputPath = path.join(tmpDir, "input.txt");
-        await fs.writeFile(inputPath, stdin);
-
-        if (language === "javascript") {
-            const filePath = path.join(tmpDir, "solution.js");
-            await fs.writeFile(filePath, code);
-            const { stdout, stderr } = await execAsync(`node ${filePath} < ${inputPath}`, { timeout: 5000 });
-            output = stdout;
-            errorStr = stderr;
-            success = !stderr;
-        } 
-        else if (language === "python") {
-            const filePath = path.join(tmpDir, "solution.py");
-            await fs.writeFile(filePath, code);
-            const { stdout, stderr } = await execAsync(`python ${filePath} < ${inputPath}`, { timeout: 5000 });
-            output = stdout;
-            errorStr = stderr;
-            success = !stderr;
-        }
-        else if (language === "c++") {
-            const sourcePath = path.join(tmpDir, "solution.cpp");
-            const outPath = path.join(tmpDir, "solution.exe");
-            await fs.writeFile(sourcePath, code);
-            await execAsync(`g++ ${sourcePath} -o ${outPath}`);
-            const { stdout, stderr } = await execAsync(`${outPath} < ${inputPath}`, { timeout: 5000 });
-            output = stdout;
-            errorStr = stderr;
-            success = true;
-        }
-        else {
-            throw new Error(`Unsupported language: ${language}`);
-        }
-    } catch (err: any) {
-        success = false;
-        errorStr = err.stderr || err.message;
-        output = err.stdout || "";
-    } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
-
-    return { success, output, error: errorStr };
-}
 
 // Production execution using Judge0
-async function executeInJudge0(code: string, language: string, stdin: string): Promise<{ success: boolean; output: string; error: string }> {
+async function executeCode(code: string, language: string, stdin: string): Promise<{ success: boolean; output: string; error: string }> {
     const languageId = LANGUAGE_IDS[language];
     if (!languageId) throw new Error(`Unsupported language: ${language}`);
     
@@ -80,14 +24,6 @@ async function executeInJudge0(code: string, language: string, stdin: string): P
     const errorStr = runOut.compile_output || runOut.stderr || (success ? "" : runOut.status.description);
     
     return { success, output: runOut.stdout || "", error: errorStr };
-}
-
-async function executeCode(code: string, language: string, stdin: string) {
-    if (process.env.NODE_ENV === "production") {
-        return executeInJudge0(code, language, stdin);
-    } else {
-        return executeLocally(code, language, stdin);
-    }
 }
 
 export const executionRouter = createTRPCRouter({
@@ -144,11 +80,8 @@ export const executionRouter = createTRPCRouter({
                 }
             }
 
-            const user = await ctx.db.user.upsert({
-                where: { clerkId: ctx.userId },
-                update: {},
-                create: { clerkId: ctx.userId }
-            });
+            const user = await ctx.db.user.findUnique({ where: { clerkId: ctx.userId } });
+            if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not synced." });
 
             const success = passed === total;
             const submission = await ctx.db.submission.create({
@@ -178,17 +111,44 @@ export const executionRouter = createTRPCRouter({
                     if (problem.difficulty === "easy") earnedPoints = 5;
                     else if (problem.difficulty === "medium") earnedPoints = 10;
                     else if (problem.difficulty === "hard") earnedPoints = 20;
+                    else if (problem.difficulty === "real-world") earnedPoints = 50;
 
-                    // Record the solve
-                    await ctx.db.userProblemSolved.create({
-                        data: {
-                            userId: user.id,
-                            problemId: input.problemId,
-                            difficulty: problem.difficulty,
-                            category: problem.category,
-                            bestSubmissionId: submission.id
+                    try {
+                        // Record the solve first - this will throw if double-submitted due to @@unique constraint
+                        await ctx.db.userProblemSolved.create({
+                            data: {
+                                userId: user.id,
+                                problemId: input.problemId,
+                                difficulty: problem.difficulty,
+                                category: problem.category,
+                                bestSubmissionId: submission.id
+                            }
+                        });
+
+                    // Calculate streak
+                    const today = new Date();
+                    const todayStr = today.toISOString().split('T')[0];
+                    let newStreak = user.streakCount || 0;
+                    
+                    if (!user.lastSolvedDate) {
+                        newStreak = Math.max(newStreak, 1);
+                    } else {
+                        const lastDateStr = user.lastSolvedDate.toISOString().split('T')[0];
+                        if (lastDateStr !== todayStr) {
+                            const yesterday = new Date(today);
+                            yesterday.setDate(yesterday.getDate() - 1);
+                            const yesterdayStr = yesterday.toISOString().split('T')[0];
+                            
+                            if (lastDateStr === yesterdayStr) {
+                                newStreak += 1;
+                            } else {
+                                newStreak = 1;
+                            }
+                        } else {
+                            // If they already solved something today but streak is 0 (due to bug), fix it
+                            if (newStreak === 0) newStreak = 1;
                         }
-                    });
+                    }
 
                     // Update User Stats
                     await ctx.db.user.update({
@@ -199,9 +159,17 @@ export const executionRouter = createTRPCRouter({
                             easyCount: problem.difficulty === "easy" ? { increment: 1 } : undefined,
                             mediumCount: problem.difficulty === "medium" ? { increment: 1 } : undefined,
                             hardCount: problem.difficulty === "hard" ? { increment: 1 } : undefined,
-                            lastSolvedDate: new Date()
+                            realWorldCount: problem.difficulty === "real-world" ? { increment: 1 } : undefined,
+                            lastSolvedDate: new Date(),
+                            streakCount: newStreak
                         }
                     });
+                    } catch (e: any) {
+                        // If it's a unique constraint violation, it means another request just created it.
+                        // We safely ignore it.
+                        isFirstSolve = false;
+                        earnedPoints = 0;
+                    }
                 }
             }
 

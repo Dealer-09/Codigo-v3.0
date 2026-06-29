@@ -1,26 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useClerk } from "@clerk/nextjs";
-import Image from "next/image";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-  Bell,
   BookOpen,
   Clock3,
-  Crosshair,
-  Gauge,
-  LogOut,
-  Medal,
-  Settings,
   Sword,
-  PanelLeftClose,
-  PanelLeftOpen,
   Trophy,
-  UserCircle2,
-  Key
+  ChevronRight,
+  Terminal,
+  BarChart2
 } from "lucide-react";
+import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+
+// Moving CustomTooltip outside so it doesn't get recreated on render
+const CustomTooltip = ({ active, payload, label, data }: any) => {
+  if (active && payload && payload.length) {
+    const fullDay = data.find((d: any) => d.day === label)?.fullDay || label;
+    return (
+      <div className="clay-card border border-white/10 p-3 rounded-xl shadow-2xl">
+        <p className="text-[var(--color-clay-text)] font-bold text-sm mb-1">{fullDay}</p>
+        <p className="text-purple-400 text-xs font-semibold">Solved : {payload[0].value}</p>
+      </div>
+    );
+  }
+  return null;
+};
 
 type DashboardViewProps = {
   displayName: string;
@@ -31,14 +36,10 @@ type DashboardViewProps = {
   mediumSolved: number;
   hardSolved: number;
   rank: string;
-};
-
-type AchievementItem = {
-  title: string;
-  detail: string;
-  progressLabel: string;
-  progressPercent: number;
-  actionLabel?: string;
+  heatmap: number[][];
+  weeklyData: { day: string; fullDay: string; solved: number }[];
+  accuracy: number;
+  percentile: number;
 };
 
 const primaryCards = [
@@ -46,8 +47,9 @@ const primaryCards = [
     title: "Practice",
     subtitle: "Solve problems sorted by difficulty.",
     cta: "Start Coding",
-    icon: BookOpen,
-    iconClass: "bg-emerald-500/20 text-emerald-400",
+    icon: Terminal,
+    iconColor: "text-emerald-500",
+    bgGlow: "bg-emerald-500/10",
     href: "/practice",
   },
   {
@@ -55,7 +57,8 @@ const primaryCards = [
     subtitle: "1v1 battles against other devs.",
     cta: "Find Match",
     icon: Sword,
-    iconClass: "bg-red-500/20 text-red-400",
+    iconColor: "text-rose-500",
+    bgGlow: "bg-rose-500/10",
     href: "/arena",
   },
   {
@@ -63,7 +66,8 @@ const primaryCards = [
     subtitle: "Weekly contests to boost rating.",
     cta: "Register",
     icon: Clock3,
-    iconClass: "bg-sky-500/20 text-sky-400",
+    iconColor: "text-blue-500",
+    bgGlow: "bg-blue-500/10",
     href: "/contest",
   },
   {
@@ -71,476 +75,226 @@ const primaryCards = [
     subtitle: "View global rankings.",
     cta: "View Top",
     icon: Trophy,
-    iconClass: "bg-amber-500/20 text-amber-400",
+    iconColor: "text-amber-500",
+    bgGlow: "bg-amber-500/10",
     href: "/leaderboard",
   },
 ] as const;
 
-const achievementProgress: AchievementItem[] = [
-  {
-    title: "Language Ninja",
-    detail: "Solve in 4 different languages",
-    progressLabel: "4 / 4",
-    progressPercent: 100,
-    actionLabel: "Claim Badge",
-  },
-  {
-    title: "Century Club",
-    detail: "Solve 100 problems",
-    progressLabel: "82 / 100",
-    progressPercent: 82,
-  },
-  {
-    title: "Titan Slayer",
-    detail: "Solve 20 Hard problems",
-    progressLabel: "10 / 20",
-    progressPercent: 50,
-  },
-] as const;
-
-const recentActivity = [
-  {
-    title: "Binary Tree Maximum Path Sum",
-    level: "Hard",
-    status: "Failed",
-    statusClass: "bg-red-500/15 text-red-400",
-    timeAgo: "1h ago",
-  },
-  {
-    title: "Letter Combinations",
-    level: "Medium",
-    status: "Completed",
-    statusClass: "bg-emerald-500/15 text-emerald-400",
-    timeAgo: "2h ago",
-  },
-  {
-    title: "Palindrome Number",
-    level: "Easy",
-    status: "Completed",
-    statusClass: "bg-emerald-500/15 text-emerald-400",
-    timeAgo: "1d ago",
-  },
-] as const;
-
-const sidebarNavItems = [
-  { title: "Dashboard", href: "/dashboard", icon: Gauge, active: true },
-  { title: "Practice", href: "/practice", icon: BookOpen, active: false },
-  { title: "Arena Duel", href: "/arena", icon: Sword, active: false },
-  { title: "Contest", href: "/contest", icon: Clock3, active: false },
-  { title: "Leaderboard", href: "/leaderboard", icon: Trophy, active: false },
-] as const;
-
-const heatmapRows = [
-  [1, 0, 2, 3, 0, 1, 4, 0, 2, 3, 0, 1, 0, 2, 4, 3],
-  [0, 2, 0, 1, 3, 4, 0, 1, 2, 0, 4, 1, 0, 2, 1, 0],
-  [3, 4, 0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 3, 4, 0, 1],
-  [0, 2, 1, 0, 4, 2, 0, 3, 4, 0, 1, 2, 3, 0, 4, 1],
-  [1, 0, 3, 4, 1, 0, 2, 0, 3, 4, 0, 2, 1, 0, 3, 4],
-] as const;
-
-const heatColorByValue = (value: number) => {
-  if (value === 0) return "bg-[#171923]";
-  if (value === 1) return "bg-violet-900/80";
-  if (value === 2) return "bg-violet-700/80";
-  if (value === 3) return "bg-violet-500/90";
-  return "bg-violet-300";
-};
-
 export function DashboardView({ 
   displayName, 
-  avatarUrl, 
   streakDays,
   problemsSolved,
   easySolved,
   mediumSolved,
   hardSolved,
-  rank
+  rank,
+  heatmap,
+  weeklyData,
+  accuracy,
+  percentile
 }: DashboardViewProps) {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const { signOut } = useClerk();
-  const router = useRouter();
+  const [chartView, setChartView] = useState<"yearly" | "weekly">("yearly");
 
-  useEffect(() => {
-      const savedKey = localStorage.getItem("codigo_gemini_key");
-      if (savedKey) setApiKey(savedKey);
-  }, []);
+  // Calculate percentages for the donut chart
+  const total = easySolved + mediumSolved + hardSolved || 1;
+  const easyPct = (easySolved / total) * 100;
+  const medPct = (mediumSolved / total) * 100;
+  const hardPct = (hardSolved / total) * 100;
 
-  const handleSaveKey = () => {
-      localStorage.setItem("codigo_gemini_key", apiKey);
-      setIsSettingsOpen(false);
-      window.dispatchEvent(new Event("api_key_updated"));
-  };
-
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed((prev) => !prev);
-  };
-
-  const handleLogout = async () => {
-    if (isLoggingOut) return;
-
-    try {
-      setIsLoggingOut(true);
-      await signOut();
-      router.replace("/sign-in");
-      router.refresh();
-    } catch {
-      window.location.assign("/sign-in");
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
+  // Conic gradient string
+  const conicGradient = `conic-gradient(#10b981 0% ${easyPct}%, #f59e0b ${easyPct}% ${easyPct + medPct}%, #ef4444 ${easyPct + medPct}% 100%)`;
 
   return (
-    <main className="min-h-screen bg-[#06080d] text-slate-100">
-      <div className="mx-auto flex max-w-370">
-        <aside
-          className={`sticky top-0 hidden h-screen shrink-0 border-r border-white/10 bg-[#0a0d12] transition-[width] duration-300 xl:block ${isSidebarCollapsed ? "w-20" : "w-64"}`}
-        >
-          <div className="flex h-full flex-col">
-            <div className={`border-b border-white/10 py-5 ${isSidebarCollapsed ? "px-4" : "px-6"}`}>
-              <Link href="/dashboard" className={`flex items-center ${isSidebarCollapsed ? "justify-center" : "gap-3"}`}>
-                <span className="relative h-9 w-9 overflow-hidden rounded-lg border border-white/20 bg-white/5">
-                  {avatarUrl ? (
-                    <Image
-                      src={avatarUrl}
-                      alt={`${displayName} profile picture`}
-                      fill
-                      sizes="36px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
-                      {displayName.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </span>
-                {!isSidebarCollapsed ? (
-                  <span className="max-w-42 truncate text-lg font-semibold tracking-tight text-white">{displayName}</span>
-                ) : null}
-              </Link>
-            </div>
-
-            <nav className={`flex-1 py-5 ${isSidebarCollapsed ? "px-2" : "px-4"}`}>
-              <ul className="space-y-2">
-                {sidebarNavItems.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <li key={item.title}>
-                      <Link
-                        href={item.href}
-                        title={item.title}
-                        className={`flex rounded-lg px-3 py-2 text-sm transition ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"} ${item.active ? "bg-violet-600/25 font-medium text-violet-300" : "text-slate-300 hover:bg-white/5"}`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {!isSidebarCollapsed ? <span>{item.title}</span> : null}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
-
-            <div className={`border-t border-white/10 py-4 ${isSidebarCollapsed ? "px-2" : "px-4"}`}>
-              <button
-                type="button"
-                title="Settings"
-                onClick={() => setIsSettingsOpen(true)}
-                className={`flex w-full rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"}`}
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-                {!isSidebarCollapsed ? <span>Settings</span> : null}
-              </button>
-              <button
-                type="button"
-                title="Logout"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className={`mt-2 flex w-full rounded-lg px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-70 ${isSidebarCollapsed ? "justify-center" : "items-center gap-3"}`}
-              >
-                <LogOut className="h-4 w-4 shrink-0" />
-                {!isSidebarCollapsed ? (
-                  <span>{isLoggingOut ? "Logging out..." : "Sign out"}</span>
-                ) : null}
-              </button>
-            </div>
+    <div className="space-y-8 pb-12 pt-4 w-full max-w-7xl mx-auto">
+      
+      {/* Header */}
+      <section className="px-2 mb-12">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-[var(--color-clay-text)] sm:text-4xl md:text-5xl mb-2">
+              Welcome back, <span className="text-violet-500">{displayName}!</span>
+            </h1>
+            <p className="text-base sm:text-lg font-bold text-[var(--color-clay-text-muted)]">
+              Let's crush some code today. You're on a <span className="text-emerald-500">{streakDays}-day streak</span>! 🔥
+            </p>
           </div>
-        </aside>
+        </header>
+      </section>
 
-        <section className="flex-1 border-l border-white/5 xl:border-l-0">
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-white/10 bg-[#070a11]/95 px-4 backdrop-blur md:px-8">
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="hidden rounded-xl border border-violet-500/30 bg-violet-500/15 p-2 text-violet-300 transition hover:bg-violet-500/25 xl:inline-flex"
-              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      {/* 4 Primary Cards */}
+      <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {primaryCards.map((card) => {
+          const Icon = card.icon;
+
+          return (
+            <Link
+              key={card.title}
+              href={card.href}
+              className="flex flex-col clay-card rounded-3xl p-6 transition-all hover:brightness-110 hover:border-[var(--color-clay-text-muted)] group h-[220px]"
             >
-              {isSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
-
-            <div className="xl:hidden" />
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:bg-white/10"
-                aria-label="Notifications"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="rounded-xl border border-violet-500/30 bg-violet-600/20 p-2 text-violet-200"
-                aria-label="Profile"
-              >
-                <UserCircle2 className="h-4 w-4" />
-              </button>
-            </div>
-          </header>
-
-          <div className="space-y-5 px-4 py-6 md:px-8 md:py-8">
-            <section>
-              <h1 className="text-3xl font-bold tracking-tight text-white">Welcome back, {displayName}!</h1>
-              <p className="mt-1 text-sm text-slate-400">
-                You&apos;re on a <span className="font-semibold text-emerald-400">{streakDays} day streak.</span> Keep it up!
-              </p>
-            </section>
-
-            <section className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-              {primaryCards.map((card) => {
-                const Icon = card.icon;
-
-                return (
-                  <article
-                    key={card.title}
-                    className="rounded-2xl border border-white/10 bg-linear-to-b from-[#0f151f] to-[#0b1018] p-5 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.8)]"
-                  >
-                    <div className={`mb-4 inline-flex rounded-lg p-2 ${card.iconClass}`}>
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <h2 className="text-lg font-semibold text-white">{card.title}</h2>
-                    <p className="mt-1 text-xs text-slate-400">{card.subtitle}</p>
-                    <Link
-                      href={card.href}
-                      className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-100 transition hover:text-violet-300"
-                    >
-                      {card.cta} <span aria-hidden>›</span>
-                    </Link>
-                  </article>
-                );
-              })}
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-[1fr,1.9fr]">
-              <article className="rounded-2xl border border-white/10 bg-[#0e121b] p-5">
-                <h3 className="text-base font-semibold text-white">Problems Solved</h3>
-                <div className="mt-5 flex justify-center">
-                  <div className="relative h-40 w-40 rounded-full bg-[conic-gradient(#22c55e_0_46%,#f59e0b_46%_79%,#ef4444_79%_100%)]">
-                    <div className="absolute inset-4.5 flex items-center justify-center rounded-full bg-[#0e121b]">
-                      <div className="text-center">
-                        <p className="text-3xl font-bold text-white">{problemsSolved}</p>
-                        <p className="text-xs text-slate-400">Solved</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Easy</p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-400">{easySolved}</p>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Medium</p>
-                    <p className="mt-1 text-lg font-semibold text-amber-400">{mediumSolved}</p>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-[#111826] px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Hard</p>
-                    <p className="mt-1 text-lg font-semibold text-rose-400">{hardSolved}</p>
-                  </div>
-                </div>
-              </article>
-
-              <article className="rounded-2xl border border-white/10 bg-[#0e121b] p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">Problems Solved History</h3>
-                  <button
-                    type="button"
-                    className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
-                  >
-                    View Weekly Chart
-                  </button>
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-[#0c1019] px-3 py-3">
-                  <div className="grid grid-cols-16 gap-1.5">
-                    {heatmapRows.flatMap((row, rowIndex) =>
-                      row.map((value, colIndex) => (
-                        <span
-                          key={`${rowIndex}-${colIndex}`}
-                          className={`h-3 w-3 rounded-sm ${heatColorByValue(value)}`}
-                          aria-hidden
-                        />
-                      )),
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatPill title="Current Streak" value={`${streakDays} Days`} />
-                  <StatPill title="Accuracy" value="--%" />
-                  <StatPill title="Top Percentile" value="Top 10%" />
-                  <StatPill title="Global Ranking" value={rank} />
-                </div>
-              </article>
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-2">
-              <article className="rounded-2xl border border-white/10 bg-[#0e121b] p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">Achievement Progress</h3>
-                  <button
-                    type="button"
-                    className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
-                  >
-                    View Achievement List
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {achievementProgress.map((item) => (
-                    <div key={item.title} className="rounded-xl border border-white/10 bg-[#101624] p-3">
-                      <div className="mb-2 flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5 rounded-full bg-violet-600/20 p-1 text-violet-300">
-                            <Medal className="h-3.5 w-3.5" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium text-white">{item.title}</p>
-                            <p className="text-xs text-slate-400">{item.detail}</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-slate-400">{item.progressLabel}</p>
-                      </div>
-
-                      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-linear-to-r from-violet-600 to-fuchsia-500"
-                          style={{ width: `${item.progressPercent}%` }}
-                        />
-                      </div>
-
-                      {item.actionLabel ? (
-                        <button
-                          type="button"
-                          className="mt-2 rounded-md bg-violet-600/90 px-2.5 py-1 text-xs font-medium text-white"
-                        >
-                          {item.actionLabel}
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </article>
-
-              <article className="rounded-2xl border border-white/10 bg-[#0e121b] p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">Recent Activity</h3>
-                  <button
-                    type="button"
-                    className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
-                  >
-                    View Full History
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {recentActivity.map((item) => (
-                    <div
-                      key={item.title}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-[#101624] px-3 py-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="mt-0.5 rounded-full bg-emerald-500/20 p-1.5 text-emerald-400">
-                          <Crosshair className="h-3.5 w-3.5" />
-                        </span>
-                        <div>
-                          <p className="text-sm font-medium text-white">{item.title}</p>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-                            <span>{item.level}</span>
-                            <span className="text-slate-600">•</span>
-                            <span>{item.timeAgo}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${item.statusClass}`}>
-                        {item.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </section>
-          </div>
-        </section>
-      </div>
-
-      {/* Settings Modal */}
-      {isSettingsOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-              <div className="bg-[#0e121b] border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-                  <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg">
-                          <Key className="w-6 h-6" />
-                      </div>
-                      <h2 className="text-xl font-bold text-white">Platform Settings</h2>
-                  </div>
-                  
-                  <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-400 mb-2">
-                          BYOK: Gemini API Key
-                      </label>
-                      <input 
-                          type="password" 
-                          placeholder="AIzaSy..."
-                          className="w-full bg-[#161b22] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                      />
-                      <p className="text-xs text-gray-500 mt-2">
-                          Your key is stored securely in your browser&apos;s local storage and used for the AI Sensei assistant.
-                      </p>
-                  </div>
-
-                  <div className="flex justify-end gap-3">
-                      <button 
-                          onClick={() => setIsSettingsOpen(false)}
-                          className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 transition"
-                      >
-                          Cancel
-                      </button>
-                      <button 
-                          onClick={handleSaveKey}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-purple-500/20 transition"
-                      >
-                          Save Settings
-                      </button>
-                  </div>
+              <div className={`h-12 w-12 rounded-2xl flex items-center justify-center mb-6 clay-panel ${card.bgGlow}`}>
+                <Icon className={`h-6 w-6 ${card.iconColor}`} />
               </div>
-          </div>
-      )}
-    </main>
-  );
-}
+              
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-[var(--color-clay-text)] mb-1.5">{card.title}</h2>
+                <p className="text-sm text-[var(--color-clay-text-muted)] font-medium leading-relaxed pr-4">{card.subtitle}</p>
+              </div>
 
-function StatPill({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-[#111826] px-3 py-2.5">
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{title}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-100">{value}</p>
+              <div className="flex items-center gap-1 text-sm font-bold text-[var(--color-clay-text-muted)] mt-4 group-hover:text-[var(--color-clay-text)] transition-colors">
+                {card.cta} <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </div>
+            </Link>
+          );
+        })}
+      </section>
+
+      {/* Stats Layout */}
+      <section className="grid gap-5 lg:grid-cols-[1fr_1.5fr] xl:grid-cols-[1fr_2.2fr]">
+        
+        {/* Problems Solved (Left) */}
+        <article className="clay-card rounded-3xl p-8 flex flex-col h-full">
+          <h3 className="text-xl font-bold text-[var(--color-clay-text)] mb-8">Problems Solved</h3>
+          
+          <div className="flex-1 flex flex-col items-center justify-center mb-10">
+            <div className="relative h-48 w-48 rounded-full shadow-2xl" style={{ background: conicGradient }}>
+              {/* Inner cutout for donut effect */}
+              <div className="absolute inset-[15px] rounded-full bg-[var(--color-clay-bg)] flex items-center justify-center">
+                <div className="text-center">
+                  <p className="text-4xl font-extrabold text-[var(--color-clay-text)]">{problemsSolved}</p>
+                  <p className="text-xs font-bold text-[var(--color-clay-text-muted)] mt-1 uppercase tracking-wider">Solved</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="clay-panel rounded-2xl p-4 flex flex-col items-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1">Easy</p>
+              <p className="text-xl font-extrabold text-emerald-500">{easySolved}</p>
+            </div>
+            <div className="clay-panel rounded-2xl p-4 flex flex-col items-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1">Medium</p>
+              <p className="text-xl font-extrabold text-amber-500">{mediumSolved}</p>
+            </div>
+            <div className="clay-panel rounded-2xl p-4 flex flex-col items-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1">Hard</p>
+              <p className="text-xl font-extrabold text-rose-500">{hardSolved}</p>
+            </div>
+          </div>
+        </article>
+
+        {/* Problems Solved History (Right) */}
+        <article className="clay-card rounded-3xl p-8 flex flex-col h-full min-w-0">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xl font-bold text-[var(--color-clay-text)]">Problems Solved History</h3>
+            <button 
+              onClick={() => setChartView(v => v === "yearly" ? "weekly" : "yearly")}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-clay-surface)] hover:brightness-110 text-sm font-bold text-[var(--color-clay-text)] transition border border-white/5 cursor-pointer"
+            >
+              <BarChart2 className="w-4 h-4" /> {chartView === "yearly" ? "View Weekly Chart" : "View Full Calendar"}
+            </button>
+          </div>
+
+          {/* Chart Area */}
+          {chartView === "weekly" ? (
+            <div className="flex-1 min-h-[220px] mb-8 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorSolved" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.6}/>
+                      <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="day" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#6b7280', fontSize: 12, fontWeight: 500 }} 
+                    dy={10} 
+                  />
+                  <Tooltip content={<CustomTooltip data={weeklyData} />} cursor={{ stroke: '#ffffff33', strokeWidth: 1, strokeDasharray: '3 3' }} />
+                  <Area 
+                    type="monotone" 
+                    dataKey="solved" 
+                    stroke="#c084fc" 
+                    strokeWidth={3} 
+                    fillOpacity={1} 
+                    fill="url(#colorSolved)" 
+                    activeDot={{ r: 6, fill: '#fff', stroke: '#a855f7', strokeWidth: 3 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-[220px] mb-8 overflow-x-auto pb-4 custom-scrollbar flex flex-col justify-center">
+              <div className="min-w-max">
+                {/* Months Header */}
+                <div className="flex justify-between text-xs font-bold text-[var(--color-clay-text-muted)] mb-3 px-1">
+                  <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span>
+                  <span>May</span><span>Jun</span><span>Jul</span><span>Aug</span>
+                  <span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+                </div>
+                
+                {/* Grid */}
+                <div className="flex flex-col gap-1.5">
+                  {heatmap.map((row, rowIndex) => (
+                    <div key={rowIndex} className="flex gap-1.5">
+                      {row.map((value, colIndex) => (
+                        <div
+                          key={colIndex}
+                          className={`w-3.5 h-3.5 shrink-0 rounded-sm transition-colors hover:ring-1 hover:ring-white/50 cursor-pointer ${
+                          value === 0 ? "bg-[var(--color-clay-surface)]" : 
+                          value === 1 ? "bg-purple-900/40" :
+                          value === 2 ? "bg-purple-700/60" :
+                          value === 3 ? "bg-purple-500/80" : "bg-purple-400"
+                        }`}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Legend */}
+                <div className="flex items-center justify-end gap-2 mt-4 text-xs font-bold text-[var(--color-clay-text-muted)]">
+                  <span>Less</span>
+                  <div className="flex gap-1">
+                    <div className="w-3 h-3 rounded-[2px] bg-[var(--color-clay-surface)]" />
+                    <div className="w-3 h-3 rounded-[2px] bg-purple-900/40" />
+                    <div className="w-3 h-3 rounded-[2px] bg-purple-700/60" />
+                    <div className="w-3 h-3 rounded-[2px] bg-purple-500/80" />
+                    <div className="w-3 h-3 rounded-[2px] bg-purple-400" />
+                  </div>
+                  <span>More</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Stats Row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="clay-panel rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1.5">Current Streak</p>
+              <p className="text-xl font-extrabold text-[var(--color-clay-text)]">{streakDays} Days</p>
+            </div>
+            <div className="clay-panel rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1.5">Accuracy</p>
+              <p className="text-xl font-extrabold text-[var(--color-clay-text)]">{accuracy}%</p>
+            </div>
+            <div className="clay-panel rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1.5">Top Percentile</p>
+              <p className="text-xl font-extrabold text-[var(--color-clay-text)]">Top {percentile}%</p>
+            </div>
+            <div className="clay-panel rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-clay-text-muted)] mb-1.5">Global Ranking</p>
+              <p className="text-xl font-extrabold text-[var(--color-clay-text)]">{rank}</p>
+            </div>
+          </div>
+        </article>
+
+      </section>
     </div>
   );
 }

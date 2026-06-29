@@ -124,7 +124,7 @@ export default function NewProblemPage() {
                                             value={tc.input}
                                             onChange={(e) => {
                                                 const newTc = [...testCases];
-                                                newTc[idx].input = e.target.value;
+                                                if (newTc[idx]) newTc[idx].input = e.target.value;
                                                 setTestCases(newTc);
                                             }}
                                         />
@@ -138,7 +138,7 @@ export default function NewProblemPage() {
                                             value={tc.expectedOutput}
                                             onChange={(e) => {
                                                 const newTc = [...testCases];
-                                                newTc[idx].expectedOutput = e.target.value;
+                                                if (newTc[idx]) newTc[idx].expectedOutput = e.target.value;
                                                 setTestCases(newTc);
                                             }}
                                         />
@@ -149,7 +149,7 @@ export default function NewProblemPage() {
                                             checked={tc.isHidden}
                                             onChange={(e) => {
                                                 const newTc = [...testCases];
-                                                newTc[idx].isHidden = e.target.checked;
+                                                if (newTc[idx]) newTc[idx].isHidden = e.target.checked;
                                                 setTestCases(newTc);
                                             }}
                                         />

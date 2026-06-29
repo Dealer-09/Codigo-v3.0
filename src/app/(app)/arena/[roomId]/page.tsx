@@ -15,9 +15,9 @@ export default async function ArenaRoomPage(
     }
 
     // For ponytail mode: Just grabbing the first problem for the room
-    const problem = room.problems[0];
+    const problems = room.problems;
     
-    if (!problem) {
+    if (!problems || problems.length === 0) {
         return <div className="text-white p-8">No problems assigned to this room yet!</div>;
     }
 
@@ -27,8 +27,16 @@ export default async function ArenaRoomPage(
 
             {/* Workspace Area */}
             <ArenaWorkspace 
-                problem={problem} 
+                problems={problems} 
                 roomId={room.roomId}
+                matchType={room.matchType}
+                timeLimit={room.timeLimit}
+                startedAt={room.startedAt?.toISOString()}
+                initialMatchStatus={room.status}
+                penaltyType={room.penaltyType}
+                hideTestCases={room.hideTestCases}
+                blindMode={room.blindMode}
+                bonusMarks={room.bonusMarks}
             />
         </main>
     );
