@@ -11,7 +11,7 @@
 - Independent player progression
 - Smart matchmaking system
 - Dynamic scoring with bonus points
-- *Powered by real-time updates (WebSocket/Subscription logic pending)*
+- Powered by real-time updates using native Bun WebSockets
 
 ### 🤖 **AI-Powered Assistance**
 - **Google Gemini Integration**: Real-time code analysis and hints.
@@ -21,10 +21,10 @@
 ### 📚 **Practice Modes**
 - **Tiered Difficulty**: Easy, Medium, Hard, and Real-World challenges.
 - **Categories**: Arrays, Algorithms, Mathematics, Data Structures.
-- **Test-Driven**: Integration with Piston via tRPC for secure code execution.
+- **Execution Engine**: Integration with Judge0 via tRPC for secure, sandboxed code execution (C, C++, Java, Python, JavaScript).
 
 ### 🏆 **Modern User System**
-- **Authentication**: NextAuth.js (supporting Discord, GitHub, etc.).
+- **Authentication**: Clerk for seamless identity management.
 - **Statistics**: Comprehensive tracking of problems solved, streak, and rank.
 - **Leaderboards**: Global rankings by problem count and arena performance.
 
@@ -36,8 +36,8 @@
 - **Language**: [TypeScript](https://www.typescriptlang.org) (End-to-end type safety)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com) (Utility-first styling)
 - **API**: [tRPC](https://trpc.io) (Type-safe APIs without schemas)
-- **Database**: [Prisma](https://prisma.io) (ORM) with SQLite (Dev) / Postgres (Prod)
-- **Auth**: [NextAuth.js](https://next-auth.js.org)
+- **Database**: [Prisma](https://prisma.io) (ORM) with MongoDB
+- **Auth**: [Clerk](https://clerk.dev)
 - **Package Manager**: [Bun](https://bun.sh)
 
 ---
@@ -64,12 +64,11 @@ Create a `.env` file in the `v3.0` root. You can copy `.env.example` if availabl
 
 ```env
 # Database
-DATABASE_URL="file:./db.sqlite"
+DATABASE_URL="mongodb+srv://<username>:<password>@cluster.mongodb.net/codigo"
 
-# Next Auth (Generate a secret via `openssl rand -base64 32`)
-AUTH_SECRET="your_generated_secret"
-# AUTH_DISCORD_ID=... (Optional)
-# AUTH_DISCORD_SECRET=... (Optional)
+# Clerk Auth
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
+CLERK_SECRET_KEY="sk_test_..."
 
 # Google Gemini AI
 GEMINI_API_KEY="your_gemini_api_key"
@@ -85,7 +84,7 @@ NODE_ENV="development"
 bun db:push
 
 # Seed initial problems
-bun prisma/seed.ts
+bun run prisma/seed.ts
 ```
 
 ### 5. Run Development Server
@@ -107,17 +106,19 @@ v3.0/
 │   └── seed.ts          # Seed data script
 ├── src/
 │   ├── env.js           # Environment variable validation
-│   ├── pages/           # Next.js Pages (Frontend)
+│   ├── app/             # Next.js App Router (Frontend)
+│   ├── _components/     # Reusable React components
 │   ├── server/          # Backend Logic
-│   │   ├── auth/        # Authentication config
 │   │   ├── db.ts        # Prisma client instance
 │   │   └── api/         # tRPC API
 │   │       ├── root.ts  # Root router
 │   │       ├── trpc.ts  # Middleware & Context
 │   │       └── routers/ # API Endpoints
-│   │           ├── user.ts     # User stats & profile
-│   │           ├── problem.ts  # Problem management
-│   │           └── ai.ts       # AI service
+│   │           ├── user.ts      # User stats & profile
+│   │           ├── problem.ts   # Problem management
+│   │           ├── arena.ts     # Matchmaking & rooms
+│   │           ├── execution.ts # Judge0 execution
+│   │           └── ai.ts        # AI service
 │   └── styles/          # Global styles (Tailwind)
 ├── public/              # Static assets
 └── package.json         # Dependencies

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api } from "~/trpc/react";
-import { Navbar } from "~/_components/layout/Navbar";
+
 
 export default function NewProblemPage() {
     const [title, setTitle] = useState("");
@@ -50,7 +50,7 @@ export default function NewProblemPage() {
 
     return (
         <main className="min-h-screen bg-[#0a0a0a] text-white selection:bg-purple-500/30 pb-20">
-            <Navbar />
+
             
             <div className="pt-32 px-6 max-w-4xl mx-auto">
                 <h1 className="text-3xl font-bold mb-8">Admin: Add New Question</h1>

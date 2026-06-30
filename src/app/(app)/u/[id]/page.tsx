@@ -1,5 +1,5 @@
 import { api } from "~/trpc/server";
-import { Navbar } from "~/_components/layout/Navbar";
+
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Medal, Flame, Target, Trophy } from "lucide-react";
@@ -15,7 +15,7 @@ export default async function UserProfilePage(
 
         return (
             <main className="min-h-screen bg-[#0a0a0a] text-white selection:bg-purple-500/30 pb-20">
-                <Navbar />
+
                 
                 <div className="pt-32 px-6 max-w-4xl mx-auto">
                     {/* Header Card */}
